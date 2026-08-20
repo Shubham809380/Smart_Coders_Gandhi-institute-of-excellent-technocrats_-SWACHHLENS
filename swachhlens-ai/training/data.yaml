@@ -1,0 +1,37 @@
+# SwachhLens Waste Detection — YOLO Training Data Config
+# =======================================================
+# Label order matters: class index 0-7 maps to these names.
+# YOLO format labels: class_index center_x center_y width height (normalized 0-1)
+#
+# Directory structure:
+#   training/
+#   ├── data.yaml          (this file)
+#   ├── images/
+#   │   ├── train/         (80% of your photos go here)
+#   │   └── val/           (20% of your photos go here)
+#   └── labels/
+#       ├── train/         (.txt files, one per image, same filename)
+#       └── val/           (.txt files, one per image, same filename)
+#
+# Recommended: Use Roboflow (https://roboflow.com) for labeling.
+#   1. Create a project → upload waste photos
+#   2. Label bounding boxes, assign to these 8 classes
+#   3. Export → YOLOv11 format → download → replace images/ and labels/ dirs
+#
+# Minimum dataset: 150+ images per class for decent results.
+# Target: 500+ total images across all classes.
+
+path: ./training
+train: images/train
+val: images/val
+
+nc: 8
+names:
+  0: overflowing_bin
+  1: garbage_dump
+  2: plastic_waste
+  3: construction_debris
+  4: organic_waste
+  5: e_waste
+  6: hazardous_waste
+  7: drain_blockage

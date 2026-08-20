@@ -1,0 +1,50 @@
+# === ENV / SECRETS ===
+.env
+.env.local
+.env.*
+!.env.example
+
+# === NODE ===
+node_modules/
+dist/
+.vite/
+
+# === PYTHON ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+venv/
+.venv/
+env/
+
+# === AI MODEL CHECKPOINTS (large binary files) ===
+swachhlens-ai/checkpoints/
+swachhlens-ai/checkpoints/**
+
+# === TRAINING DATA (large datasets, not for repo) ===
+swachhlens-ai/training/images/
+swachhlens-ai/training/labels/
+swachhlens-ai/training/runs/
+swachhlens-ai/training/runs/**
+
+# === FIREBASE ===
+.firebase/
+firebase-debug.log
+
+# === BUILD ARTIFACTS ===
+backend/data/state.json
+*.log
+
+# === OS / EDITOR ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
