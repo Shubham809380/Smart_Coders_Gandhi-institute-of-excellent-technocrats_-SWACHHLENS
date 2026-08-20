@@ -116,16 +116,11 @@ export default function ComplaintQueue() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchComplaints(); }, []);
-
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { fetchComplaints({ search }); }, 300);
+    debounceRef.current = setTimeout(() => { fetchComplaints({ status: statusFilter, severity: severityFilter, search }); }, search ? 300 : 0);
     return () => clearTimeout(debounceRef.current);
-  }, [search]);
-
-  useEffect(() => { fetchComplaints({ status: statusFilter }); }, [statusFilter]);
-  useEffect(() => { fetchComplaints({ severity: severityFilter }); }, [severityFilter]);
+  }, [statusFilter, severityFilter, search]);
 
   const handleRowClick = (report) => {
     navigate(`/admin/complaints/${report.id}`, { state: { report } });

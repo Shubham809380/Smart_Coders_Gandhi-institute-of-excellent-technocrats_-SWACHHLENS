@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { reportService, teamService } from '../../services.js';
 import GoogleMap from '../../components/GoogleMap.jsx';
+import { useTheme } from '../../contexts/ThemeContext.jsx';
+import { Box, IconButton, keyframes } from '@mui/material';
+import { ArrowBack as BackIcon, Home as HomeIcon } from '@mui/icons-material';
 
 const TIMELINE_STEPS = [
   { key: 'submitted', label: 'Submitted', icon: 'flag' },
@@ -11,423 +14,417 @@ const TIMELINE_STEPS = [
   { key: 'cleanup_in_progress', label: 'Cleanup in Progress', icon: 'cleaning_services' },
   { key: 'resolved', label: 'Resolved', icon: 'check_circle' },
 ];
+const STATUS_TO_STEP = { submitted:0, ai_analyzed:1, under_review:1, assigned:2, en_route:3, cleanup_in_progress:4, verification:5, resolved:5 };
 
-const STATUS_TO_STEP = {
-  submitted: 0, ai_analyzed: 1, under_review: 1,
-  assigned: 2, en_route: 3, cleanup_in_progress: 4,
-  verification: 5, resolved: 5,
-};
+const rm = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fadeIn = keyframes`from{opacity:0;transform:translateY(16px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}`;
+const pulseRing = keyframes`0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.8);opacity:0}`;
+const radarPing = keyframes`0%{transform:scale(0.5);opacity:0.7}100%{transform:scale(3);opacity:0}`;
+const drawLine = keyframes`from{height:0}to{height:var(--target-h,100%)}`;
+const bounceIn = keyframes`0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}`;
 
-function getTimelineIndex(status) {
-  return STATUS_TO_STEP[status] ?? 0;
-}
-
-function getProgressPercent(status) {
-  const idx = getTimelineIndex(status);
-  return Math.round((idx / (TIMELINE_STEPS.length - 1)) * 100);
-}
-
-function formatStatus(status) {
-  return (status || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function formatTime(iso) {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, month: 'short', day: 'numeric' });
-  } catch { return ''; }
-}
-
-function formatShortAddress(addr) {
-  if (!addr) return '';
-  const parts = addr.split(',').map(s => s.trim());
-  if (parts.length <= 2) return addr;
-  return parts.slice(0, 2).join(', ');
-}
+function getTimelineIndex(status) { return STATUS_TO_STEP[status] ?? 0; }
+function getProgressPercent(status) { return Math.round((getTimelineIndex(status) / (TIMELINE_STEPS.length - 1)) * 100); }
+function formatStatus(s) { return (s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
+function formatTime(iso) { if (!iso) return ''; try { return new Date(iso).toLocaleString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true, month:'short', day:'numeric' }); } catch { return ''; } }
+function shortAddr(addr) { if (!addr) return ''; const p = addr.split(',').map(s=>s.trim()); return p.length<=2 ? addr : p.slice(0,2).join(', '); }
 
 async function reverseGeocode(lat, lng) {
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-      { headers: { 'Accept-Language': 'en' } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.display_name || null;
-  } catch {
-    return null;
-  }
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, { headers:{'Accept-Language':'en'}, signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    return (await r.json()).display_name || null;
+  } catch { return null; }
+}
+
+function CounterVal({ target, animate }) {
+  const [val, setVal] = useState(animate ? 0 : target);
+  useEffect(() => {
+    if (!animate || rm) { setVal(target); return; }
+    const num = Number(target); if (isNaN(num)) { setVal(target); return; }
+    const start = performance.now(); let raf;
+    const tick = (now) => { const p = Math.min((now-start)/600,1); setVal(Math.round(num*(1-Math.pow(1-p,3)))); if(p<1) raf=requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, animate]);
+  return <>{val}</>;
 }
 
 export default function TrackingCleanup() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isDark } = useTheme();
   const [report, setReport] = useState(null);
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
   const [displayAddress, setDisplayAddress] = useState('');
   const [addressExpanded, setAddressExpanded] = useState(false);
-  const [prevTimelineIdx, setPrevTimelineIdx] = useState(-1);
-  const [completedBounce, setCompletedBounce] = useState(new Set());
+  const [loaded, setLoaded] = useState(false);
   const pollRef = useRef(null);
 
   const reportId = location.state?.reportId;
+  const T = isDark
+    ? { canvas:'#0B1220', surface:'#161B26', glass:'rgba(22,27,38,0.7)', border:'#232A3A', text:'#E8ECF1', muted:'#8791A3', accent:'#4C8DFF',
+        sevLow:'#34C77B', sevMed:'#F5A623', sevHigh:'#E5484D' }
+    : { canvas:'#F5F7FA', surface:'#FFFFFF', glass:'rgba(255,255,255,0.75)', border:'#E4E8EE', text:'#12151C', muted:'#5B6472', accent:'#2E6BD6',
+        sevLow:'#1FAE66', sevMed:'#D98A0E', sevHigh:'#D6393E' };
 
   const fetchData = useCallback(async () => {
     try {
       if (!reportId) { setLoading(false); return; }
-      const reportData = await reportService.getReportById(reportId);
-      if (reportData) {
-        setReport(prev => {
-          if (prev && prev.status !== reportData.status) {
-            const newIdx = getTimelineIndex(reportData.status);
-            setPrevTimelineIdx(getTimelineIndex(prev.status));
-            setCompletedBounce(prevSet => {
-              const next = new Set(prevSet);
-              next.add(newIdx);
-              return next;
-            });
-          }
-          return reportData;
-        });
-        if (reportData?.assignedTeam) {
-          try {
-            const teams = await teamService.getTeams();
-            const match = teams.find(t => t.id === reportData.assignedTeam);
-            if (match) setTeam(match);
-          } catch {}
-        }
-        if (reportData?.latitude && reportData?.longitude && !reportData.address) {
-          const addr = await reverseGeocode(reportData.latitude, reportData.longitude);
-          if (addr) setDisplayAddress(addr);
-        } else if (reportData.address) {
-          setDisplayAddress(reportData.address);
-        }
+      const d = await reportService.getReportById(reportId);
+      if (d) {
+        setReport(d);
+        if (d.assignedTeam) { try { const teams = await teamService.getTeams(); const m = teams.find(t=>t.id===d.assignedTeam); if(m) setTeam(m); } catch {} }
+        if (d.latitude && d.longitude && !d.address) { const a = await reverseGeocode(d.latitude, d.longitude); if(a) setDisplayAddress(a); }
+        else if (d.address) setDisplayAddress(d.address);
       }
-    } catch (err) {
-      console.error('Failed to fetch report:', err);
-    }
+    } catch(e) { console.error('Fetch report error:', e); }
     setLoading(false);
   }, [reportId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
   useEffect(() => {
     if (!reportId || report?.status === 'resolved') return;
     pollRef.current = setInterval(fetchData, 5000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [reportId, report?.status, fetchData]);
+  useEffect(() => { if (!loading && report) { const t = setTimeout(() => setLoaded(true), rm?0:100); return () => clearTimeout(t); } }, [loading, report]);
 
   const currentStatus = report?.status || 'submitted';
   const timelineIdx = getTimelineIndex(currentStatus);
   const progressPct = getProgressPercent(currentStatus);
-  const severityMap = { low: 'text-green-600 bg-green-50', medium: 'text-amber-600 bg-amber-50', high: 'text-orange-600 bg-orange-50', critical: 'text-red-600 bg-red-50' };
-  const coords = (report?.latitude && report?.longitude) ? { lat: report.latitude, lng: report.longitude } : null;
+  const coords = (report?.latitude && report?.longitude) ? { lat:report.latitude, lng:report.longitude } : null;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center" style={{ fontFamily: 'Manrope' }}>
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative w-14 h-14">
-            <span className="absolute inset-0 rounded-full bg-green-500/10 animate-ping" />
-            <div className="relative w-14 h-14 rounded-full bg-white border-[3px] border-green-500 border-t-transparent animate-spin" />
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-bold text-gray-900">Loading report</p>
-            <p className="text-xs text-gray-400 mt-0.5">Fetching latest status...</p>
-          </div>
-        </div>
-      </div>
+      <Box sx={{ minHeight:'100vh', bgcolor:T.canvas, display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <Box sx={{ textAlign:'center' }}>
+          <Box sx={{ width:56, height:56, mx:'auto', position:'relative' }}>
+            <Box sx={{ position:'absolute', inset:0, borderRadius:'50%', border:`3px solid ${T.accent}`, borderTopColor:'transparent', animation:`spin 0.8s linear infinite`,
+              '@keyframes spin':{ to:{transform:'rotate(360deg)'} } }} />
+          </Box>
+          <Box sx={{ mt:3 }}>
+            <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text }}>Loading report</span>
+            <span style={{ display:'block', fontFamily:'"JetBrains Mono",monospace', fontSize:11, color:T.muted, mt:0.5 }}>Fetching latest status...</span>
+          </Box>
+        </Box>
+      </Box>
     );
   }
 
+  const sevColor = report?.severity === 'low' ? T.sevLow : report?.severity === 'medium' ? T.sevMed : report?.severity === 'high' || report?.severity === 'critical' ? T.sevHigh : T.muted;
+
   return (
-    <div className="min-h-screen bg-background" style={{ fontFamily: 'Manrope' }}>
-      <style>{`
-        @keyframes pulseRing {
-          0%, 100% { transform: scale(1); opacity: 0.6; }
-          50% { transform: scale(1.5); opacity: 0; }
-        }
-        @keyframes bounceIn {
-          0% { transform: scale(0.5); opacity: 0; }
-          50% { transform: scale(1.15); }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes fillLine {
-          from { height: 0%; }
-          to { height: var(--fill-target, 100%); }
-        }
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .tl-bounce { animation: bounceIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
-        .tl-fill { animation: fillLine 0.6s ease-out forwards; }
-        .tl-pulse-ring { animation: pulseRing 2s ease-out infinite; }
-        .tl-slide { animation: slideDown 0.3s ease-out both; }
-      `}</style>
+    <Box sx={{ minHeight:'100vh', bgcolor:T.canvas, display:'flex', flexDirection:'column', fontFamily:'"Inter",sans-serif',
+      transition:'background-color 0.25s ease' }}>
 
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-gray-100">
-        <div className="flex items-center gap-3 px-4 h-14 max-w-lg mx-auto">
-          <button
-            onClick={() => navigate('/home')}
-            className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center active:scale-95 transition-transform"
-          >
-            <span className="material-symbols-outlined text-gray-600 text-xl">arrow_back</span>
-          </button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-[15px] font-bold text-gray-900 truncate">Track Report</h1>
-          </div>
-          <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{report?.id?.slice(-8) || ''}</span>
-        </div>
-      </header>
-
-      <main className="px-4 pb-8 max-w-lg mx-auto">
-        <div className="flex flex-col gap-4 pt-4">
-
-          {/* Live status badge */}
-          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-green-50 border border-green-100">
-            <span className="relative flex h-3 w-3">
-              {currentStatus !== 'resolved' && <span className="tl-pulse-ring absolute inline-flex h-full w-full rounded-full bg-green-400" />}
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
+      {/* ─── Header ─── */}
+      <Box sx={{ position:'sticky', top:0, zIndex:50, bgcolor: isDark ? 'rgba(11,18,32,0.92)' : 'rgba(245,247,250,0.92)',
+        backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:`1px solid ${T.border}` }}>
+        <Box sx={{ height:56, px:2, display:'flex', alignItems:'center', gap:2, pt:'env(safe-area-inset-top,0px)' }}>
+          <IconButton onClick={() => navigate('/home')} size="small" sx={{ color:T.muted }}><BackIcon /></IconButton>
+          <Box sx={{ flex:1 }}>
+            <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:16, color:T.text }}>Track Report</span>
+          </Box>
+          {/* Tracking number chip */}
+          <Box sx={{ border:`1px solid ${T.border}`, borderRadius:4, px:1.5, py:0.25 }}>
+            <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:10, color:T.muted, letterSpacing:'0.06em', fontWeight:600 }}>
+              {(report?.id || '').slice(-8).toUpperCase() || '--------'}
             </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-green-700">{formatStatus(currentStatus)}</p>
-            </div>
-            <span className="text-[11px] font-medium text-green-500">{progressPct}%</span>
-          </div>
+          </Box>
+        </Box>
+      </Box>
 
-          {/* Report card */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {report?.image && (
-              <div className="relative h-48 bg-gray-100">
-                <img src={report.image} alt="Report" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+      <Box sx={{ flex:1, overflowY:'auto', pb:24 }}>
+        <Box sx={{ px:2.5, pt:2.5, display:'flex', flexDirection:'column', gap:2, maxWidth:480, mx:'auto' }}>
+
+          {/* ─── Status Banner ─── */}
+          <Box sx={{
+            bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+            border:`1px solid ${T.border}`, borderRadius:2, px:3, py:2.5, display:'flex', alignItems:'center', gap:2,
+            borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+            animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.05s both`,
+          }}>
+            <Box sx={{ position:'relative', width:14, height:14, flexShrink:0 }}>
+              {currentStatus !== 'resolved' && !rm && (
+                <Box sx={{ position:'absolute', inset:-3, borderRadius:'50%', border:`2px solid ${T.sevLow}`, opacity:0, animation:`${pulseRing} 2.5s ease-out infinite` }} />
+              )}
+              <Box sx={{ width:14, height:14, borderRadius:'50%', bgcolor: currentStatus === 'resolved' ? T.accent : T.sevLow }} />
+            </Box>
+            <Box sx={{ flex:1 }}>
+              <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text }}>{formatStatus(currentStatus)}</span>
+            </Box>
+            <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:13, fontWeight:700, color:T.sevLow }}>{progressPct}%</span>
+          </Box>
+
+          {/* ─── Photo Card ─── */}
+          {report?.image && (
+            <Box sx={{
+              bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+              border:`1px solid ${T.border}`, borderRadius:2, overflow:'hidden',
+              borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+              animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.1s both`,
+            }}>
+              <Box sx={{ position:'relative', height:192, bgcolor: isDark ? '#1a2030' : '#E8ECF1' }}>
+                <Box component="img" src={report.image} alt="Report" sx={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                <Box sx={{ position:'absolute', inset:0, background:`linear-gradient(to top, ${T.canvas}, transparent 45%)` }} />
                 {report.severity && (
-                  <span className={`absolute top-3 left-3 text-[11px] font-bold px-2.5 py-1 rounded-lg ${severityMap[report.severity] || 'text-gray-600 bg-gray-100'}`}>
-                    {report.severity?.toUpperCase()}
-                  </span>
+                  <Box sx={{ position:'absolute', top:12, left:12, bgcolor:'rgba(0,0,0,0.5)', backdropFilter:'blur(8px)', WebkitBackdropFilter:'blur(8px)',
+                    border:`1px solid rgba(255,255,255,0.1)`, borderRadius:1.5, px:2, py:0.75, boxShadow:'0 4px 12px rgba(0,0,0,0.3)' }}>
+                    <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:11, fontWeight:700, color:sevColor, letterSpacing:'0.05em' }}>{report.severity.toUpperCase()}</span>
+                  </Box>
                 )}
-              </div>
-            )}
-            <div className="p-4">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-bold text-gray-900">{report?.wasteType || 'Unknown Waste'}</p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="material-symbols-outlined text-gray-400 text-base">location_on</span>
-                    {displayAddress ? (
-                      <p
-                        className="text-[12px] text-gray-500 leading-snug"
-                        style={{ display: '-webkit-box', WebkitLineClamp: addressExpanded ? 'unset' : 2, WebkitBoxOrient: 'vertical', overflow: addressExpanded ? 'visible' : 'hidden' }}
-                        onClick={() => setAddressExpanded(!addressExpanded)}
-                      >
-                        {displayAddress}
-                        {!addressExpanded && displayAddress.length > 40 && <span className="text-green-600 font-bold ml-1">more</span>}
-                      </p>
-                    ) : coords ? (
-                      <p className="text-[12px] text-gray-500">{coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</p>
-                    ) : (
-                      <p className="text-[12px] text-gray-400 italic">Location unavailable</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 pt-3 border-t border-gray-100">
-                <div className="flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-green-500 text-base">psychology</span>
-                  <span className="text-[12px] font-bold text-gray-700">{report?.aiConfidence || '—'}%</span>
-                  <span className="text-[11px] text-gray-400">AI Conf.</span>
-                </div>
-                {report?.severity && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-orange-500 text-base">priority_high</span>
-                    <span className="text-[12px] font-bold text-gray-700 capitalize">{report.severity}</span>
-                  </div>
-                )}
-                {report?.estimatedVolume && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-blue-500 text-base">scale</span>
-                    <span className="text-[12px] font-bold text-gray-700">{report.estimatedVolume}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Team card */}
-          {team && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0 shadow-sm shadow-green-500/20">
-                  <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>local_shipping</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-bold text-gray-900 truncate">{team.name}</p>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-[12px] text-gray-500 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-gray-400 text-sm">directions_car</span>
-                      {team.vehicle || 'Vehicle'}
+              </Box>
+              <Box sx={{ px:3, pb:2.5, pt:1.5 }}>
+                <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:15, color:T.text }}>{report.wasteType || 'Unknown Waste'}</span>
+                <Box sx={{ display:'flex', alignItems:'center', gap:1, mt:1 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:14, color:T.muted }}>location_on</span>
+                  {displayAddress ? (
+                    <span onClick={() => setAddressExpanded(!addressExpanded)} style={{ fontFamily:'"Inter",sans-serif', fontSize:12, color:T.muted, cursor:'pointer',
+                      display:'-webkit-box', WebkitLineClamp: addressExpanded ? 'unset' : 2, WebkitBoxOrient:'vertical', overflow: addressExpanded ? 'visible' : 'hidden' }}>
+                      {displayAddress}
+                      {!addressExpanded && displayAddress.length > 40 && <span style={{ color:T.accent, fontWeight:700, marginLeft:4 }}>more</span>}
                     </span>
-                    <span className="text-[12px] text-gray-500 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-gray-400 text-sm">group</span>
-                      {team.members || 0} members
-                    </span>
-                  </div>
-                </div>
-                {team.etaMinutes && (
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-[18px] font-extrabold text-green-600">{team.etaMinutes}</p>
-                    <p className="text-[10px] text-gray-400 font-medium -mt-0.5">MIN ETA</p>
-                  </div>
-                )}
-              </div>
-            </div>
+                  ) : coords ? (
+                    <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:12, color:T.muted }}>{coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</span>
+                  ) : (
+                    <span style={{ fontFamily:'"Inter",sans-serif', fontSize:12, color:T.muted, fontStyle:'italic' }}>Location unavailable</span>
+                  )}
+                </Box>
+              </Box>
+            </Box>
           )}
 
-          {/* Map */}
-          <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-gray-100 border border-gray-100 shadow-sm">
+          {/* ─── Stat Strip ─── */}
+          <Box sx={{
+            bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+            border:`1px solid ${T.border}`, borderRadius:2, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', p:0.5,
+            borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+            animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.15s both`,
+          }}>
+            {[
+              { icon:'psychology', color:T.accent, value: report?.aiConfidence || '—', label:'AI Conf.', pct: false },
+              { icon:'priority_high', color:sevColor, value: report?.severity ? report.severity.charAt(0).toUpperCase()+report.severity.slice(1) : '—', label:'Severity', pct:false },
+              { icon:'scale', color:T.sevLow, value: report?.estimatedVolume || '—', label:'Size', pct:false },
+            ].map((s,i) => (
+              <Box key={i} sx={{ display:'flex', alignItems:'center', gap:1.5, px:1.5, py:2, borderRight: i<2 ? `1px solid ${T.border}` : 'none' }}>
+                <Box sx={{ width:32, height:32, borderRadius:'50%', bgcolor:`${s.color}15`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:16, color:s.color }}>{s.icon}</span>
+                </Box>
+                <Box>
+                  <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:13, fontWeight:700, color:T.text, display:'block' }}>
+                    {typeof s.value === 'number' ? <CounterVal target={s.value} animate={loaded} /> : s.value}
+                  </span>
+                  <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:9, color:T.muted, textTransform:'uppercase', letterSpacing:'0.06em' }}>{s.label}</span>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+
+          {/* ─── Team Card ─── */}
+          {team && (
+            <Box sx={{
+              bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+              border:`1px solid ${T.border}`, borderRadius:2, p:2.5, display:'flex', alignItems:'center', gap:2,
+              borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+              animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.2s both`,
+            }}>
+              <Box sx={{ width:44, height:44, borderRadius:2, background:`linear-gradient(135deg, ${T.sevLow}, ${isDark ? '#2BA066' : '#18874C'})`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+                boxShadow:`0 4px 12px ${T.sevLow}30` }}>
+                <span className="material-symbols-outlined" style={{ fontSize:22, color:'#fff', fontVariationSettings:"'FILL' 1" }}>local_shipping</span>
+              </Box>
+              <Box sx={{ flex:1, minWidth:0 }}>
+                <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text, display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{team.name}</span>
+                <Box sx={{ display:'flex', gap:2, mt:0.5 }}>
+                  <span style={{ fontFamily:'"Inter",sans-serif', fontSize:11, color:T.muted, display:'flex', alignItems:'center', gap:0.5 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize:13, color:T.muted }}>directions_car</span>{team.vehicle || 'Vehicle'}
+                  </span>
+                  <span style={{ fontFamily:'"Inter",sans-serif', fontSize:11, color:T.muted, display:'flex', alignItems:'center', gap:0.5 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize:13, color:T.muted }}>group</span>{team.members || 0} members
+                  </span>
+                </Box>
+              </Box>
+              {team.etaMinutes && (
+                <Box sx={{ textAlign:'right', flexShrink:0 }}>
+                  <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:20, fontWeight:700, color:T.sevLow, display:'block' }}>{team.etaMinutes}</span>
+                  <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:9, color:T.muted, letterSpacing:'0.05em' }}>MIN ETA</span>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {/* ─── Map Card ─── */}
+          <Box sx={{
+            position:'relative', width:'100%', height:192, borderRadius:2, overflow:'hidden',
+            bgcolor: isDark ? '#1a2030' : '#E8ECF1',
+            border:`1px solid ${T.border}`,
+            borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+            animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.25s both`,
+          }}>
             {coords ? (
               <>
-                <GoogleMap
-                  center={coords}
-                  zoom={15}
-                  markers={[{ lat: coords.lat, lng: coords.lng, severity: report.severity, label: report.wasteType }]}
-                  className="w-full h-full"
-                />
-                <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 flex items-center gap-2 shadow-sm z-10">
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  <span className="text-[11px] font-bold text-gray-700">Tracking Active</span>
-                </div>
-                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 shadow-sm z-10">
-                  <span className="text-[10px] font-mono text-gray-500">{coords.lat.toFixed(3)}, {coords.lng.toFixed(3)}</span>
-                </div>
+                <GoogleMap center={coords} zoom={15} markers={[{ lat:coords.lat, lng:coords.lng, severity:report.severity, label:report.wasteType }]} className="w-full h-full" />
+                <Box sx={{ position:'absolute', bottom:10, left:10, bgcolor:T.glass, backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)',
+                  border:`1px solid ${T.border}`, borderRadius:1.5, px:2, py:1, display:'flex', alignItems:'center', gap:1.5, zIndex:10 }}>
+                  <Box sx={{ position:'relative', width:8, height:8 }}>
+                    <Box sx={{ width:8, height:8, borderRadius:'50%', bgcolor:T.sevLow }} />
+                    {!rm && <Box sx={{ position:'absolute', inset:-4, borderRadius:'50%', border:`1px solid ${T.sevLow}`, opacity:0, animation:`${pulseRing} 2.5s ease-out infinite` }} />}
+                  </Box>
+                  <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:11, color:T.text }}>Tracking Active</span>
+                </Box>
+                <Box sx={{ position:'absolute', top:10, right:10, bgcolor:T.glass, backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)',
+                  border:`1px solid ${T.border}`, borderRadius:1.5, px:2, py:1, zIndex:10 }}>
+                  <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:10, color:T.muted }}>{coords.lat.toFixed(3)}, {coords.lng.toFixed(3)}</span>
+                </Box>
               </>
             ) : (
-              <div className="absolute inset-0 bg-gradient-to-br from-green-100 via-emerald-50 to-teal-100 flex flex-col items-center justify-center gap-2">
-                <div className="w-10 h-10 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center shadow-sm">
-                  <span className="material-symbols-outlined text-green-600 text-xl">map</span>
-                </div>
-                <span className="text-[12px] text-green-700 font-semibold">No location data</span>
-              </div>
+              <Box sx={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:1 }}>
+                <span className="material-symbols-outlined" style={{ fontSize:32, color:T.muted }}>map</span>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:12, color:T.muted }}>No location data</span>
+              </Box>
             )}
-          </div>
+          </Box>
 
-          {/* Progress bar */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-gray-900">Progress</h3>
-              <span className="text-[13px] font-bold text-green-600">{progressPct}%</span>
-            </div>
-            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-1">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-700 ease-out"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Timeline */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h3 className="text-[15px] font-bold text-gray-900 mb-5">Timeline</h3>
-            <div className="relative">
+          {/* ─── Segmented Progress ─── */}
+          <Box sx={{
+            bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+            border:`1px solid ${T.border}`, borderRadius:2, p:2.5,
+            borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+            animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.3s both`,
+          }}>
+            <Box sx={{ display:'flex', justifyContent:'space-between', alignItems:'center', mb:2 }}>
+              <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text }}>Progress</span>
+              <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:13, fontWeight:700, color:T.sevLow }}>{progressPct}%</span>
+            </Box>
+            <Box sx={{ display:'flex', gap:0.75 }}>
               {TIMELINE_STEPS.map((step, i) => {
-                const isCompleted = i < timelineIdx;
-                const isCurrent = i === timelineIdx;
-                const isPending = i > timelineIdx;
-                const isLast = i === TIMELINE_STEPS.length - 1;
-
-                const timelineEntry = report?.statusTimeline?.find(t => {
-                  if (i === 0) return t.status === 'submitted';
-                  if (i === 1) return t.status === 'ai_analyzed' || t.status === 'under_review';
-                  if (i === 2) return t.status === 'assigned';
-                  if (i === 3) return t.status === 'en_route';
-                  if (i === 4) return t.status === 'cleanup_in_progress';
-                  if (i === 5) return t.status === 'resolved' || t.status === 'verification';
-                  return false;
-                });
-
-                const justCompleted = completedBounce.has(i) && isCompleted;
-
+                const filled = i < timelineIdx;
+                const current = i === timelineIdx;
                 return (
-                  <div key={step.key} className={`relative flex gap-4 ${isLast ? '' : 'pb-6'}`} style={{ animationDelay: `${i * 60}ms` }}>
-                    <div className="flex flex-col items-center flex-shrink-0">
-                      <div className="relative z-10">
-                        {isCompleted && (
-                          <div className={`w-7 h-7 rounded-full bg-green-500 flex items-center justify-center shadow-sm shadow-green-500/25 ${justCompleted ? 'tl-bounce' : ''}`}>
-                            <span className="material-symbols-outlined text-white text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>
-                          </div>
-                        )}
-                        {isCurrent && (
-                          <div className="relative">
-                            <span className="tl-pulse-ring absolute inset-0 rounded-full bg-green-400/40" />
-                            <div className="relative w-7 h-7 rounded-full bg-white border-[2.5px] border-green-500 flex items-center justify-center">
-                              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                            </div>
-                          </div>
-                        )}
-                        {isPending && (
-                          <div className="w-7 h-7 rounded-full bg-white border-[2px] border-gray-200 flex items-center justify-center">
-                            <span className="material-symbols-outlined text-gray-300 text-[13px]">{step.icon}</span>
-                          </div>
-                        )}
-                      </div>
-                      {!isLast && (
-                        <div className="w-[2px] flex-1 min-h-[20px] mt-1">
-                          <div className="w-full h-full bg-gray-200 rounded-full relative overflow-hidden">
-                            {isCompleted && (
-                              <div className="absolute inset-0 bg-green-500 rounded-full tl-fill" style={{ '--fill-target': '100%' }} />
-                            )}
-                            {isCurrent && (
-                              <div className="absolute top-0 left-0 w-full bg-gradient-to-b from-green-500 to-green-200 rounded-full tl-fill" style={{ '--fill-target': '60%' }} />
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="pt-0.5 flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className={`text-[13px] font-bold ${isCurrent ? 'text-green-600' : isCompleted ? 'text-gray-900' : 'text-gray-400'}`}>
-                          {step.label}
-                        </p>
-                        {timelineEntry?.at && (
-                          <span className="text-[11px] text-gray-400 font-medium flex-shrink-0">{formatTime(timelineEntry.at)}</span>
-                        )}
-                      </div>
-                      {isCurrent && (
-                        <p className="text-[12px] text-green-500 font-medium mt-0.5">Current step</p>
-                      )}
-                    </div>
-                  </div>
+                  <Box key={step.key} sx={{ flex:1, height:6, borderRadius:3, position:'relative', overflow:'hidden',
+                    bgcolor: isDark ? '#1C2233' : '#E4E8EE' }}>
+                    {(filled || current) && (
+                      <Box sx={{ position:'absolute', inset:0, borderRadius:3,
+                        background: filled ? T.sevLow : `linear-gradient(90deg, ${T.sevLow}, ${T.sevLow}60)`,
+                        animation: rm ? 'none' : `${fadeIn} 0.4s ease ${0.35 + i*0.08}s both`,
+                        transition: 'width 0.6s ease' }} />
+                    )}
+                  </Box>
                 );
               })}
-            </div>
-          </div>
+            </Box>
+          </Box>
 
-          {/* Comment */}
+          {/* ─── Timeline ─── */}
+          <Box sx={{
+            bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+            border:`1px solid ${T.border}`, borderRadius:2, p:2.5,
+            borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+            animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.35s both`,
+          }}>
+            <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text, display:'block', mb:2.5 }}>Timeline</span>
+            {TIMELINE_STEPS.map((step, i) => {
+              const isCompleted = i < timelineIdx;
+              const isCurrent = i === timelineIdx;
+              const isPending = i > timelineIdx;
+              const isLast = i === TIMELINE_STEPS.length - 1;
+              const entry = report?.statusTimeline?.find(t => {
+                if (i===0) return t.status==='submitted';
+                if (i===1) return t.status==='ai_analyzed'||t.status==='under_review';
+                if (i===2) return t.status==='assigned';
+                if (i===3) return t.status==='en_route';
+                if (i===4) return t.status==='cleanup_in_progress';
+                if (i===5) return t.status==='resolved'||t.status==='verification';
+                return false;
+              });
+
+              return (
+                <Box key={step.key} sx={{ display:'flex', gap:2, animation: rm ? 'none' : `${fadeIn} 0.4s ease ${0.4+i*0.08}s both`,
+                  pb: isLast ? 0 : 2.5 }}>
+                  {/* Left column: dots + line */}
+                  <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', width:28, flexShrink:0 }}>
+                    {isCompleted && (
+                      <Box sx={{ width:28, height:28, borderRadius:'50%', bgcolor:T.sevLow, display:'flex', alignItems:'center', justifyContent:'center',
+                        boxShadow:`0 2px 8px ${T.sevLow}40`, animation: rm ? 'none' : `${bounceIn} 0.5s cubic-bezier(0.34,1.56,0.64,1) both`, animationDelay:`${0.4+i*0.08}s` }}>
+                        <span className="material-symbols-outlined" style={{ fontSize:16, color:'#fff', fontVariationSettings:"'FILL' 1" }}>check</span>
+                      </Box>
+                    )}
+                    {isCurrent && (
+                      <Box sx={{ position:'relative', width:28, height:28 }}>
+                        {!rm && <Box sx={{ position:'absolute', inset:-6, borderRadius:'50%', border:`2px solid ${T.sevLow}`, opacity:0, animation:`${pulseRing} 2.5s ease-out infinite` }} />}
+                        <Box sx={{ position:'relative', width:28, height:28, borderRadius:'50%', border:`2.5px solid ${T.sevLow}`, bgcolor:T.canvas, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          <Box sx={{ width:8, height:8, borderRadius:'50%', bgcolor:T.sevLow, animation:'pulse 1.5s ease-in-out infinite',
+                            '@keyframes pulse':{ '0%,100%':{opacity:1,transform:'scale(1)'},'50%':{opacity:0.6,transform:'scale(0.8)'} } }} />
+                        </Box>
+                      </Box>
+                    )}
+                    {isPending && (
+                      <Box sx={{ width:28, height:28, borderRadius:'50%', border:`2px solid ${isDark ? '#232A3A' : '#D6DDE5'}`, bgcolor:'transparent', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize:14, color: isDark ? '#3a4560' : '#B0B8C4' }}>{step.icon}</span>
+                      </Box>
+                    )}
+                    {!isLast && (
+                      <Box sx={{ width:2, flex:1, minHeight:20, mt:0.75, position:'relative', overflow:'hidden', borderRadius:1, bgcolor: isDark ? '#1C2233' : '#E4E8EE' }}>
+                        {(isCompleted || isCurrent) && (
+                          <Box sx={{ position:'absolute', top:0, left:0, width:'100%', borderRadius:1, bgcolor: isCompleted ? T.sevLow : `${T.sevLow}50`,
+                            animation: rm ? 'none' : `${drawLine} 0.5s ease ${0.5+i*0.08}s both`,
+                            '--target-h': isCompleted ? '100%' : '60%' }} />
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+                  {/* Right column: label + time */}
+                  <Box sx={{ pt:0.25, flex:1, minWidth:0 }}>
+                    <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:2 }}>
+                      <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:13, color: isCurrent ? T.sevLow : isCompleted ? T.text : T.muted }}>
+                        {step.label}
+                      </span>
+                      {entry?.at && (
+                        <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:10, color:T.muted, flexShrink:0 }}>{formatTime(entry.at)}</span>
+                      )}
+                    </Box>
+                    {isCurrent && (
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:11, color:T.sevLow, display:'block', mt:0.5, fontWeight:500 }}>Current step</span>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+
+          {/* ─── Comment ─── */}
           {report?.comment && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="material-symbols-outlined text-gray-400 text-base">chat_bubble</span>
-                <span className="text-[13px] font-bold text-gray-900">Your Note</span>
-              </div>
-              <p className="text-[13px] text-gray-600 leading-relaxed">{report.comment}</p>
-            </div>
+            <Box sx={{
+              bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+              border:`1px solid ${T.border}`, borderRadius:2, p:2.5,
+              borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+              animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.5s both`,
+            }}>
+              <Box sx={{ display:'flex', alignItems:'center', gap:1.5, mb:1.5 }}>
+                <span className="material-symbols-outlined" style={{ fontSize:16, color:T.muted }}>chat_bubble</span>
+                <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:13, color:T.text }}>Your Note</span>
+              </Box>
+              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:13, color:T.muted, lineHeight:1.7, margin:0 }}>{report.comment}</p>
+            </Box>
           )}
 
-          <div className="flex flex-col gap-3 pt-2">
-            <button
-              onClick={() => navigate('/home')}
-              className="w-full h-12 rounded-2xl bg-gray-100 text-gray-700 text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors active:scale-[0.98]"
-            >
-              <span className="material-symbols-outlined text-[20px]">home</span>
+          {/* ─── Back to Home ─── */}
+          <Box sx={{
+            animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.55s both`,
+          }}>
+            <Button variant="outlined" startIcon={<HomeIcon />} onClick={() => navigate('/home')}
+              sx={{
+                width:'100%', height:48, borderRadius:2, textTransform:'none', fontWeight:700, fontSize:14,
+                fontFamily:'"Space Grotesk",sans-serif', borderColor:T.border, color:T.muted,
+                '&:hover': { borderColor:T.muted, bgcolor: isDark ? 'rgba(135,145,163,0.08)' : 'rgba(91,100,114,0.06)' },
+                '&:focus-visible': { outline:`2px solid ${T.accent}`, outlineOffset:2 },
+              }}>
               Back to Home
-            </button>
-          </div>
-
-        </div>
-      </main>
-    </div>
+            </Button>
+          </Box>
+        </Box>
+      </Box>
+    </Box>
   );
 }

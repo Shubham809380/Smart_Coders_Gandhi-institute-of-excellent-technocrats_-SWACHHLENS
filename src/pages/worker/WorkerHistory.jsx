@@ -2,14 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import { workerService } from "../../services.js";
-
-function timeSince(ts) {
-  const diff = Math.max(1, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
-  if (diff < 60) return `${diff}m ago`;
-  const h = Math.round(diff / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
-}
+import { timeSince } from "../../utils/helpers.js";
 
 function groupByDate(tasks) {
   const groups = {};

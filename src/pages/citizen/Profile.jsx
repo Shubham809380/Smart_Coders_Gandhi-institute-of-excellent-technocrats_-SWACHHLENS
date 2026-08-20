@@ -12,6 +12,7 @@ import {
 } from "@mui/icons-material";
 import BottomNav from "../../components/BottomNav.jsx";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
+import { useTheme } from "../../contexts/ThemeContext.jsx";
 import {
   reportService, authService, profileService, permissionService,
 } from "../../services.js";
@@ -74,6 +75,7 @@ function SettingsRow({ icon, iconColor, title, subtitle, action, onClick }) {
 
 export default function Profile() {
   const navigate = useNavigate();
+  const { mode: themeMode, setThemeMode } = useTheme();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -215,7 +217,7 @@ export default function Profile() {
   }
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "grey.50", pb: 12 }}>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default", pb: 12, transition: 'background-color 0.25s ease' }}>
       {/* Header */}
       <Paper elevation={0} sx={{ borderRadius: 0, borderBottom: "1px solid", borderColor: "grey.100" }}>
         <Container maxWidth="sm">
@@ -346,6 +348,42 @@ export default function Profile() {
                 onChange={toggleNotifications}
                 color="success"
               />
+            }
+          />
+
+          <Divider variant="inset" component="li" sx={{ mx: 2.5 }} />
+
+          {/* Theme Switcher */}
+          <SettingsRow
+            icon={<Box sx={{ display: 'flex', fontSize: 20, color: themeMode === 'dark' ? 'grey.400' : 'grey.700' }}>
+              {themeMode === 'dark' ? '🌙' : themeMode === 'light' ? '☀️' : '💻'}
+            </Box>}
+            iconColor={themeMode === 'dark' ? 'grey' : themeMode === 'light' ? 'warning' : 'info'}
+            title="Appearance"
+            subtitle={themeMode === 'dark' ? 'Dark mode active' : themeMode === 'light' ? 'Light mode active' : 'Follow system'}
+            action={
+              <Box sx={{ display: 'flex', gap: 0, border: '1px solid', borderColor: 'grey.200', borderRadius: 2, p: 0.25 }}>
+                {[
+                  { key: 'light', icon: '☀️', tip: 'Light' },
+                  { key: 'dark', icon: '🌙', tip: 'Dark' },
+                  { key: 'system', icon: '💻', tip: 'System' },
+                ].map((opt) => (
+                  <Box
+                    key={opt.key}
+                    onClick={() => setThemeMode(opt.key)}
+                    title={opt.tip}
+                    sx={{
+                      width: 32, height: 28, borderRadius: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', fontSize: 14, transition: 'all 0.2s',
+                      bgcolor: themeMode === opt.key ? 'primary.main' : 'transparent',
+                      color: themeMode === opt.key ? 'white' : 'grey.500',
+                      '&:hover': { bgcolor: themeMode === opt.key ? 'primary.main' : 'grey.100' },
+                    }}
+                  >
+                    {opt.icon}
+                  </Box>
+                ))}
+              </Box>
             }
           />
 

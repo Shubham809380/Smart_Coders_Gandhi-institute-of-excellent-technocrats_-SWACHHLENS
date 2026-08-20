@@ -1,185 +1,252 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import { workerService } from "../../services.js";
+import { useTheme } from "../../contexts/ThemeContext.jsx";
 
-function haversineKm(a, b) {
-  const toRad = (v) => (v * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(b.latitude - a.latitude);
-  const dLon = toRad(b.longitude - a.longitude);
-  const lat1 = toRad(a.latitude);
-  const lat2 = toRad(b.latitude);
-  return R * 2 * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2));
+const SEV_COLORS = { critical:"#E5484D", high:"#F5A623", medium:"#F5A623", low:"#34C77B" };
+const SEV_BG = { critical:"#E5484D20", high:"#F5A62320", medium:"#F5A62320", low:"#34C77B20" };
+
+function makeIcon(color) {
+  return L.divIcon({
+    className:'',
+    iconSize:[28,28],
+    iconAnchor:[14,14],
+    popupAnchor:[0,-16],
+    html:`<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center">
+      <div style="width:8px;height:8px;background:#fff;border-radius:50%"></div>
+    </div>`,
+  });
 }
 
-const pinColors = { critical: "#ef4444", high: "#f97316", medium: "#f59e0b", low: "#10b981" };
-const pinColorsBg = { critical: "bg-red-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-emerald-500" };
+function makeWorkerIcon() {
+  return L.divIcon({
+    className:'',
+    iconSize:[24,24],
+    iconAnchor:[12,12],
+    html:`<div style="position:relative;width:24px;height:24px">
+      <div style="position:absolute;inset:-8px;border-radius:50%;border:2px solid #4C8DFF;opacity:0.4;animation:pulse 2s infinite"></div>
+      <div style="width:24px;height:24px;border-radius:50%;background:#4C8DFF;border:3px solid #fff;box-shadow:0 2px 12px rgba(76,141,255,0.5);display:flex;align-items:center;justify-content:center">
+        <div style="width:6px;height:6px;background:#fff;border-radius:50%"></div>
+      </div>
+    </div>
+    <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:0.4}50%{transform:scale(1.6);opacity:0}}</style>`,
+  });
+}
 
 export default function WorkerMap() {
   const navigate = useNavigate();
+  const { isDark } = useTheme();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [workerLoc, setWorkerLoc] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const mapRef = useRef(null);
+  const mapInstance = useRef(null);
+  const markersRef = useRef([]);
+  const workerMarkerRef = useRef(null);
+  const watchIdRef = useRef(null);
+
+  const T = isDark
+    ? { bg:'#0B1220', surface:'#161B26', border:'#232A3A', text:'#E8ECF1', muted:'#8791A3', accent:'#4C8DFF', tileUrl:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' }
+    : { bg:'#F5F7FA', surface:'#FFFFFF', border:'#E4E8EE', text:'#12151C', muted:'#5B6472', accent:'#2E6BD6', tileUrl:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' };
+
+  const initMap = useCallback((center) => {
+    if (mapInstance.current) {
+      mapInstance.current.remove();
+      mapInstance.current = null;
+    }
+    if (!mapRef.current) return;
+    const map = L.map(mapRef.current, {
+      center: [center.lat, center.lng],
+      zoom: 14,
+      zoomControl: false,
+      attributionControl: false,
+    });
+    L.tileLayer(T.tileUrl, { maxZoom:19 }).addTo(map);
+    L.control.zoom({ position:'bottomright' }).addTo(map);
+    mapInstance.current = map;
+    return map;
+  }, [isDark]);
 
   useEffect(() => {
-    workerService.getTasks().then((d) => { setTasks(d.tasks || []); setLoading(false); }).catch(() => setLoading(false));
-    if (!navigator.geolocation) {
-      setWorkerLoc(null);
-      return;
-    }
-    let settled = false;
-    const timeoutId = setTimeout(function () {
-      if (!settled) { settled = true; setWorkerLoc(null); }
-    }, 10000);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timeoutId);
-          setWorkerLoc({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-        }
-      },
-      () => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timeoutId);
-          setWorkerLoc(null);
-        }
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
-    );
+    let cancelled = false;
+    const fetchData = async () => {
+      try {
+        const data = await workerService.getTasks();
+        if (!cancelled) setTasks(data.tasks || []);
+      } catch {}
+      setLoading(false);
+    };
+    fetchData();
+    return () => { cancelled = true; };
   }, []);
 
-  const getPinPosition = (task) => {
-    if (!workerLoc || !task.latitude || !task.longitude) return null;
-    const allLats = [workerLoc.latitude, ...tasks.map((t) => t.latitude).filter(Boolean)];
-    const allLngs = [workerLoc.longitude, ...tasks.map((t) => t.longitude).filter(Boolean)];
-    const minLat = Math.min(...allLats), maxLat = Math.max(...allLats);
-    const minLng = Math.min(...allLngs), maxLng = Math.max(...allLngs);
-    const latRange = maxLat - minLat || 0.01;
-    const lngRange = maxLng - minLng || 0.01;
-    const pad = 12;
-    const x = pad + ((task.longitude - minLng) / lngRange) * (100 - 2 * pad);
-    const y = pad + ((maxLat - task.latitude) / latRange) * (100 - 2 * pad);
-    return { x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) };
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    const opts = { enableHighAccuracy:true, timeout:10000, maximumAge:30000 };
+    let initialSet = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat:pos.coords.latitude, lng:pos.coords.longitude };
+        setWorkerLoc(loc);
+        if (!initialSet) { initialSet = true; initMap(loc); }
+      },
+      () => {},
+      opts
+    );
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const loc = { lat:pos.coords.latitude, lng:pos.coords.longitude };
+        setWorkerLoc(loc);
+        if (mapInstance.current && workerMarkerRef.current) {
+          workerMarkerRef.current.setLatLng([loc.lat, loc.lng]);
+        } else if (mapInstance.current) {
+          workerMarkerRef.current = L.marker([loc.lat, loc.lng], { icon:makeWorkerIcon(), zIndexOffset:1000 }).addTo(mapInstance.current);
+        }
+      },
+      () => {},
+      opts
+    );
+    return () => {
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+    };
+  }, [initMap]);
+
+  useEffect(() => {
+    if (!mapInstance.current) return;
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+    const bounds = [];
+    tasks.forEach(t => {
+      if (!t.latitude || !t.longitude) return;
+      const color = SEV_COLORS[t.severity] || '#8791A3';
+      const marker = L.marker([t.latitude, t.longitude], { icon:makeIcon(color) })
+        .addTo(mapInstance.current)
+        .bindPopup(`<div style="min-width:180px;font-family:Inter,sans-serif">
+          <div style="font-weight:700;font-size:13px;text-transform:capitalize;margin-bottom:4px">${(t.wasteType||'waste').replace(/_/g,' ')}</div>
+          <div style="font-size:11px;color:#8791A3;margin-bottom:6px">${t.address||'Unknown'}</div>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+            <span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:${SEV_BG[t.severity]||'#8791A320'};color:${color}">${(t.severity||'medium').toUpperCase()}</span>
+            <span style="font-size:10px;color:#8791A3;font-weight:600">${t.priorityScore||0} pts</span>
+          </div>
+          <button onclick="window.__workerMapNav('${t.id}')" style="width:100%;padding:8px;border-radius:8px;background:${T.accent};color:#fff;border:none;font-weight:700;font-size:12px;cursor:pointer">View Task</button>
+        </div>`, { className:'' });
+      marker.on('click', () => setSelectedTask(t));
+      markersRef.current.push(marker);
+      bounds.push([t.latitude, t.longitude]);
+    });
+    if (workerLoc) bounds.push([workerLoc.lat, workerLoc.lng]);
+    if (bounds.length > 1) mapInstance.current.fitBounds(bounds, { padding:[50,50], maxZoom:15 });
+    else if (workerLoc && tasks.length === 0) mapInstance.current.setView([workerLoc.lat, workerLoc.lng], 14);
+  }, [tasks, workerLoc, isDark]);
+
+  useEffect(() => {
+    if (workerLoc && mapInstance.current && !workerMarkerRef.current) {
+      workerMarkerRef.current = L.marker([workerLoc.lat, workerLoc.lng], { icon:makeWorkerIcon(), zIndexOffset:1000 })
+        .addTo(mapInstance.current)
+        .bindPopup('<div style="font-weight:700;font-size:12px">Your Location</div>');
+    }
+  }, [workerLoc]);
+
+  useEffect(() => {
+    window.__workerMapNav = (id) => {
+      const t = tasks.find(x => x.id === id);
+      if (t) navigate(`/worker/tasks/${id}`, { state:{ report:t } });
+    };
+    return () => { delete window.__workerMapNav; };
+  }, [tasks, navigate]);
+
+  const navigateToTask = (t) => {
+    if (t.latitude && t.longitude) {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${t.latitude},${t.longitude}`, '_blank');
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-20">
-      <div className="sticky top-0 z-40 bg-white shadow-sm">
+    <div className="min-h-screen flex flex-col pb-20" style={{ background:T.bg, transition:'background-color 0.25s ease' }}>
+      <div className="sticky top-0 z-40" style={{ background:T.surface, borderBottom:`1px solid ${T.border}` }}>
         <div className="px-4 pt-[env(safe-area-inset-top)] pb-3">
           <div className="flex items-center gap-3 pt-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-              <span className="material-symbols-outlined text-blue-600 text-[20px]">map</span>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background:`${T.accent}18` }}>
+              <span className="material-symbols-outlined text-[20px]" style={{ color:T.accent }}>map</span>
             </div>
             <div>
-              <h1 className="text-lg font-extrabold text-gray-900">Task Map</h1>
-              <span className="text-xs font-bold text-gray-400">{tasks.length} assigned tasks</span>
+              <h1 className="text-lg font-extrabold" style={{ fontFamily:'"Space Grotesk",sans-serif', color:T.text }}>Task Map</h1>
+              <span className="text-xs font-bold" style={{ color:T.muted }}>{tasks.length} assigned tasks</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 mx-4 mt-4 rounded-2xl overflow-hidden border border-gray-200 bg-gradient-to-br from-emerald-50 via-blue-50 to-gray-100 relative" ref={mapRef} style={{ minHeight: "50vh" }}>
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
-
+      <div className="flex-1 mx-4 mt-4 rounded-2xl overflow-hidden relative" ref={mapRef} style={{ minHeight:'55vh', border:`1px solid ${T.border}` }}>
         {!workerLoc && !loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-emerald-50 via-blue-50 to-gray-100 z-30">
-            <div className="w-14 h-14 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center shadow-sm mb-3">
-              <span className="material-symbols-outlined text-blue-500 text-[28px]">location_off</span>
-            </div>
-            <p className="text-sm font-bold text-gray-700 mb-1">Location unavailable</p>
-            <p className="text-xs text-gray-400 text-center px-8 mb-4">Enable location access in your browser settings to see your position on the map</p>
-            <button
-              onClick={() => {
-                if (navigator.geolocation) {
-                  navigator.geolocation.getCurrentPosition(
-                    (pos) => setWorkerLoc({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-                    () => setWorkerLoc(null),
-                    { enableHighAccuracy: true, timeout: 8000 }
-                  );
-                }
-              }}
-              className="px-5 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-xl active:scale-95 transition-all"
-            >
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-30" style={{ background:T.bg }}>
+            <span className="material-symbols-outlined text-[40px] mb-2" style={{ color:T.muted }}>location_off</span>
+            <p className="text-sm font-bold mb-1" style={{ color:T.text }}>Location unavailable</p>
+            <p className="text-xs text-center px-8 mb-4" style={{ color:T.muted }}>Enable location access to see your position on the map</p>
+            <button onClick={() => {
+              if (navigator.geolocation) navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  const loc = { lat:pos.coords.latitude, lng:pos.coords.longitude };
+                  setWorkerLoc(loc);
+                  if (!mapInstance.current) initMap(loc);
+                },
+                () => {},
+                { enableHighAccuracy:true, timeout:8000 }
+              );
+            }} className="px-5 py-2.5 text-white text-sm font-bold rounded-xl active:scale-95 transition-all" style={{ background:T.accent }}>
               Try Again
             </button>
           </div>
         )}
-
-        {workerLoc && (
-          <div className="absolute z-20" style={{ left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}>
-            <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg">
-              <div className="absolute inset-0 bg-blue-400 rounded-full animate-ping opacity-40" />
-            </div>
-            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">You</div>
+        {!loading && tasks.length === 0 && workerLoc && (
+          <div className="absolute top-4 left-4 right-4 z-30 rounded-xl px-4 py-3 flex items-center gap-2" style={{ background:T.surface, border:`1px solid ${T.border}`, boxShadow:'0 4px 12px rgba(0,0,0,0.1)' }}>
+            <span className="material-symbols-outlined text-[18px]" style={{ color:T.muted }}>info</span>
+            <span className="text-xs font-bold" style={{ color:T.muted }}>No tasks assigned — map centered on your location</span>
           </div>
         )}
-
-        {!loading && tasks.length === 0 && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="material-symbols-outlined text-[40px] text-gray-300 mb-2">map_off</span>
-            <span className="text-sm font-bold text-gray-400">No tasks to show</span>
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center z-30" style={{ background:`${T.bg}80` }}>
+            <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor:T.accent, borderTopColor:'transparent' }} />
           </div>
         )}
-
-        {tasks.map((task) => {
-          const pos = getPinPosition(task);
-          if (!pos) return null;
-          const dist = workerLoc && task.latitude ? haversineKm(workerLoc, task) : null;
-          return (
-            <button
-              key={task.id}
-              onClick={() => setSelectedTask(selectedTask?.id === task.id ? null : task)}
-              className="absolute z-10 -translate-x-1/2 -translate-y-1/2 transition-all active:scale-125"
-              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-            >
-              <div className={`w-8 h-8 rounded-full ${pinColorsBg[task.severity] || "bg-gray-400"} flex items-center justify-center shadow-lg border-2 border-white`}>
-                <span className="text-white text-[10px] font-extrabold">{(task.wasteType || "?").charAt(0).toUpperCase()}</span>
-              </div>
-              {selectedTask?.id === task.id && (
-                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-white border-r border-b border-gray-200" />
-              )}
-            </button>
-          );
-        })}
       </div>
 
       {selectedTask && (
-        <div className="fixed bottom-20 left-4 right-4 z-30 bg-white rounded-2xl shadow-xl border border-gray-200 p-4 animate-slide-up">
+        <div className="fixed bottom-20 left-4 right-4 z-30 rounded-2xl shadow-xl p-4" style={{ background:T.surface, border:`1px solid ${T.border}`, animation:'slideUp 0.3s ease' }}>
+          <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
           <div className="flex items-start gap-3">
-            <div className={`w-10 h-10 rounded-xl ${pinColorsBg[selectedTask.severity] || "bg-gray-400"} flex items-center justify-center shrink-0`}>
-              <span className="material-symbols-outlined text-white text-[20px]">delete</span>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background:SEV_BG[selectedTask.severity]||SEV_BG.medium }}>
+              <span className="material-symbols-outlined text-[20px]" style={{ color:SEV_COLORS[selectedTask.severity]||'#F5A623' }}>delete</span>
             </div>
             <div className="flex-1 min-w-0">
-              <span className="text-sm font-extrabold text-gray-900 capitalize block">{(selectedTask.wasteType || "waste").replace(/_/g, " ")}</span>
-              <span className="text-xs text-gray-500 truncate block mt-0.5">{selectedTask.address || "Unknown"}</span>
+              <span className="text-sm font-extrabold capitalize block" style={{ fontFamily:'"Space Grotesk",sans-serif', color:T.text }}>{(selectedTask.wasteType || "waste").replace(/_/g, " ")}</span>
+              <span className="text-xs truncate block mt-0.5" style={{ color:T.muted }}>{selectedTask.address || "Unknown"}</span>
               <div className="flex items-center gap-2 mt-1">
-                {workerLoc && selectedTask.latitude && (
-                  <span className="text-[11px] font-bold text-gray-400 flex items-center gap-0.5">
-                    <span className="material-symbols-outlined text-[11px]">near_me</span>
-                    {haversineKm(workerLoc, selectedTask).toFixed(1)}km
-                  </span>
-                )}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${selectedTask.severity === "critical" ? "bg-red-100 text-red-600" : selectedTask.severity === "high" ? "bg-orange-100 text-orange-600" : "bg-amber-100 text-amber-600"}`}>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background:SEV_BG[selectedTask.severity]||SEV_BG.medium, color:SEV_COLORS[selectedTask.severity]||'#F5A623' }}>
                   {(selectedTask.severity || "medium").toUpperCase()}
                 </span>
+                <span className="text-[11px] font-bold" style={{ color:T.muted }}>{selectedTask.priorityScore||0} pts</span>
               </div>
             </div>
           </div>
-          <button onClick={() => navigate(`/worker/tasks/${selectedTask.id}`, { state: { report: selectedTask } })} className="w-full h-12 mt-3 rounded-xl bg-green-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all">
-            <span className="material-symbols-outlined text-[18px]">navigation</span>
-            Go to Task
-          </button>
-        </div>
-      )}
-
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/60">
-          <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => navigateToTask(selectedTask)}
+              className="flex-1 h-11 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+              style={{ background:T.accent }}>
+              <span className="material-symbols-outlined text-[18px]">navigation</span>
+              Navigate
+            </button>
+            <button onClick={() => navigate(`/worker/tasks/${selectedTask.id}`, { state:{ report:selectedTask } })}
+              className="flex-1 h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+              style={{ background: isDark ? '#1C2233' : '#F0F3F7', color:T.text, border:`1px solid ${T.border}` }}>
+              <span className="material-symbols-outlined text-[18px]">visibility</span>
+              View Task
+            </button>
+          </div>
         </div>
       )}
 

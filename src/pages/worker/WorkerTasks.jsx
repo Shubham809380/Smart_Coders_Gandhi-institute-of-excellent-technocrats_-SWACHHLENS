@@ -2,25 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import { workerService, authService } from "../../services.js";
-
-function haversineKm(a, b) {
-  const toRad = (v) => (v * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(b.latitude - a.latitude);
-  const dLon = toRad(b.longitude - a.longitude);
-  const lat1 = toRad(a.latitude);
-  const lat2 = toRad(b.latitude);
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.asin(Math.sqrt(x));
-}
-
-function timeSince(ts) {
-  const diff = Math.max(1, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
-  if (diff < 60) return `${diff}m ago`;
-  const h = Math.round(diff / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
-}
+import { haversineKm, timeSince } from "../../utils/helpers.js";
 
 const severityColor = { critical: "bg-red-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-emerald-400" };
 const statusLabel = { assigned: "New", en_route: "Accepted", cleanup_in_progress: "In Progress" };

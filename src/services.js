@@ -164,7 +164,7 @@ export const appService = {
         const token = getToken();
         if (token) {
             let lastErr = null;
-            for (let attempt = 0; attempt < 3; attempt++) {
+            for (let attempt = 0; attempt < 5; attempt++) {
                 try {
                     const data = await api("/auth/me");
                     state.currentUser = data.currentUser;
@@ -174,17 +174,20 @@ export const appService = {
                     break;
                 } catch (err) {
                     lastErr = err;
-                    if (attempt < 2) await delay(1000 * (attempt + 1));
+                    if (attempt < 4) await delay(Math.min(1500 * (attempt + 1), 8000));
                 }
             }
             if (lastErr) {
-                const is401 = lastErr?.message?.includes("401") || lastErr?.message?.includes("Unauthorized") || lastErr?.message?.includes("sign in");
+                const msg = String(lastErr?.message || "");
+                const is401 = msg.includes("401") || msg.includes("Unauthorized") || msg.includes("sign in") || msg.includes("Please sign in");
                 if (is401) {
                     setToken("");
                     state.currentUser = null;
                     try { sessionStorage.setItem(SESSION_EXPIRED_KEY, "1"); } catch {}
+                    state.startup = { appState: APP_STATES.UNAUTHENTICATED, loading: false, error: "" };
+                } else {
+                    state.startup = { appState: APP_STATES.RECONNECTING, loading: false, error: "Server is waking up. Retrying..." };
                 }
-                state.startup = { appState: APP_STATES.UNAUTHENTICATED, loading: false, error: "" };
             }
         } else {
             state.startup = { appState: APP_STATES.UNAUTHENTICATED, loading: false, error: "" };
@@ -199,6 +202,18 @@ export const appService = {
         persistClientState();
     },
     retryInitialization() { return this.initialize(); },
+    startAutoRetry(maxRetries = 10) {
+        let retries = 0;
+        const tryAgain = async () => {
+            if (retries >= maxRetries || !getToken()) return;
+            retries++;
+            await delay(5000);
+            if (state.startup.appState !== APP_STATES.RECONNECTING) return;
+            const snap = await this.initialize();
+            if (snap.appState === APP_STATES.RECONNECTING) tryAgain();
+        };
+        tryAgain();
+    },
     getStartup() { return clone(state.startup); },
     getOnboardingSlides() { return clone(onboardingSlides); },
 };
@@ -502,6 +517,13 @@ export const adminService = {
     async getWorkerStats() {
         const data = await api("/admin/workers");
         return data.workers;
+    },
+    async toggleWorkerDuty(uid, dutyStatus) {
+        const data = await api(`/admin/workers/${encodeURIComponent(uid)}/duty`, {
+            method: "PATCH",
+            body: JSON.stringify({ dutyStatus }),
+        });
+        return data.user;
     },
 };
 

@@ -103,15 +103,9 @@ export const store = {
     const res = await query("SELECT * FROM sessions WHERE token = $1", [token]);
     if (!res.rows[0]) return null;
     const row = res.rows[0];
-    const lastActivity = new Date(row.last_activity_at || row.created_at).getTime();
-    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-    if (Date.now() - lastActivity > threeDaysMs) {
-      await this.deleteSession(token);
-      return null;
-    }
     const user = await this.getUserByUid(row.uid);
     if (!user) return null;
-    await query("UPDATE sessions SET last_activity_at = NOW(), expires_at = NOW() + INTERVAL '3 days' WHERE token = $1", [token]);
+    await query("UPDATE sessions SET last_activity_at = NOW() WHERE token = $1", [token]);
     return user;
   },
 
@@ -120,7 +114,7 @@ export const store = {
   },
 
   async cleanExpiredSessions() {
-    await query("DELETE FROM sessions WHERE last_activity_at < NOW() - INTERVAL '3 days'");
+    await query("DELETE FROM sessions WHERE created_at < NOW() - INTERVAL '30 days'");
   },
 
   async getReportsForUser(uid, role) {

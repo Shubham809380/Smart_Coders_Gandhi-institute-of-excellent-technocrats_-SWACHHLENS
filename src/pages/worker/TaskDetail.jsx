@@ -25,6 +25,7 @@ export default function TaskDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [issueReason, setIssueReason] = useState("");
+  const [issueOtherText, setIssueOtherText] = useState("");
   const [issueSubmitting, setIssueSubmitting] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -54,11 +55,13 @@ export default function TaskDetail() {
   };
 
   const handleReportIssue = async () => {
-    if (!issueReason.trim() || !report) return;
+    const finalReason = issueReason === "Other" ? issueOtherText.trim() : issueReason;
+    if (!finalReason || !report) return;
     setIssueSubmitting(true);
     try {
-      await workerService.reportIssue(report.id, issueReason);
+      await workerService.reportIssue(report.id, finalReason);
       setShowIssueModal(false);
+      setIssueReason(""); setIssueOtherText("");
       setToast("Issue reported to admin");
       setTimeout(() => { navigate(-1); }, 1500);
     } catch (e) { console.error(e); }
@@ -270,14 +273,14 @@ export default function TaskDetail() {
             {issueReason === "Other" && (
               <textarea
                 placeholder="Describe the issue..."
-                value={issueReason === "Other" ? "" : issueReason}
-                onChange={(e) => setIssueReason(e.target.value)}
+                value={issueOtherText}
+                onChange={(e) => setIssueOtherText(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm resize-none h-20 mb-4 focus:outline-none focus:border-green-500"
               />
             )}
             <button
               onClick={handleReportIssue}
-              disabled={!issueReason || issueSubmitting}
+              disabled={(!issueReason || (issueReason === "Other" && !issueOtherText.trim())) || issueSubmitting}
               className="w-full h-14 rounded-2xl bg-red-600 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-all active:scale-[0.98]"
             >
               {issueSubmitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Submit Report"}

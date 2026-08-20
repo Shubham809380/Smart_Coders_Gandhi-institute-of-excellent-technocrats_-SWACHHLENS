@@ -98,12 +98,22 @@ function buildDashboard(state) {
   const open = reports.filter((r) => ![REPORT_STATUSES.RESOLVED, REPORT_STATUSES.REJECTED].includes(r.status));
   const critical = reports.filter((r) => r.priority?.level === "critical");
   const resolvedToday = reports.filter((r) => r.status === REPORT_STATUSES.RESOLVED && new Date(r.updatedAt).toDateString() === new Date().toDateString());
+  const resolved = reports.filter((r) => r.status === REPORT_STATUSES.RESOLVED);
+  let avgResolutionTime = 0;
+  if (resolved.length > 0) {
+    const totalMinutes = resolved.reduce((sum, r) => {
+      const created = new Date(r.createdAt).getTime();
+      const updated = new Date(r.updatedAt).getTime();
+      return sum + Math.max(1, (updated - created) / 60000);
+    }, 0);
+    avgResolutionTime = Math.round(totalMinutes / resolved.length);
+  }
   return {
     openComplaints: open.length,
     criticalComplaints: critical.length,
     resolvedToday: resolvedToday.length,
     availableTeams: state.teams.filter((t) => t.status === "available").length,
-    averageResolutionTime: 84,
+    averageResolutionTime: avgResolutionTime,
     urgentComplaints: reports.filter((r) => ["high", "critical"].includes(r.priority?.level)).length,
     aiPriorityQueue: reports
       .filter((r) => [REPORT_STATUSES.SUBMITTED, REPORT_STATUSES.AI_ANALYZED, REPORT_STATUSES.UNDER_REVIEW].includes(r.status))
@@ -657,7 +667,24 @@ export async function handleApiRequest(req, res) {
       const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
       const workers = await store.getWorkerStats();
-      return json(res, 200, { workers: workers.map((w) => ({ ...sanitizeUser(w), completedTasks: w.completedTasks, activeTasks: w.activeTasks, totalTasks: w.totalTasks })) });
+      const teams = await store.getTeams();
+      return json(res, 200, { workers: workers.map((w) => {
+        const team = teams.find(t => t.leaderId === w.uid || t.memberIds.includes(w.uid));
+        return { ...sanitizeUser(w), completedTasks: w.completedTasks, activeTasks: w.activeTasks, totalTasks: w.totalTasks, teamName: team?.name || null, teamId: team?.id || null };
+      }) });
+    }
+
+    const workerDutyMatch = pathname.match(/^\/api\/admin\/workers\/([^/]+)\/duty$/);
+    if (workerDutyMatch && req.method === "PATCH") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const uid = decodeURIComponent(workerDutyMatch[1]);
+      const body = await readJson(req);
+      const dutyStatus = body.dutyStatus === "on_duty" ? "on_duty" : "off_duty";
+      const updated = await store.toggleDutyStatus(uid, dutyStatus);
+      if (!updated) return json(res, 404, { error: { code: "NOT_FOUND", message: "Worker not found." } });
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `admin_toggled_duty_${dutyStatus}` });
+      return json(res, 200, { user: sanitizeUser(updated) });
     }
 
     if (pathname === "/api/worker/tasks" && req.method === "GET") {
