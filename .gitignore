@@ -38,6 +38,7 @@ firebase-debug.log
 
 # === BUILD ARTIFACTS ===
 backend/data/state.json
+backend/uploads/
 *.log
 
 # === OS / EDITOR ===
