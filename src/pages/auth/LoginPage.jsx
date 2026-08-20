@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGoogleLogin } from "@react-oauth/google";
-import { authService } from "../../services.js";
+import { authService, popSessionExpired } from "../../services.js";
 import logo from "../../logo.svg";
 
 function BrandPanel() {
@@ -125,6 +125,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [loginMode, setLoginMode] = useState("citizen");
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    if (popSessionExpired()) setSessionExpired(true);
+  }, []);
 
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
@@ -285,6 +290,14 @@ export default function LoginPage() {
                 })}
               </div>
             </div>
+
+            {/* Session Expired Notice */}
+            {sessionExpired && (
+              <div className="mb-4 flex items-start gap-3 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl px-4 py-3">
+                <span className="material-symbols-outlined text-[20px] mt-0.5 shrink-0">schedule</span>
+                <span className="text-sm font-medium" style={{ fontFamily: "Manrope" }}>Your session has expired. Please log in again.</span>
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (

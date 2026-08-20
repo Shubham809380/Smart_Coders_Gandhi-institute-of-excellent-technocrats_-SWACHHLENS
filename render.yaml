@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: swachhlens-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: AUTH_PROVIDER
+        value: neon
+      - key: AI_PROVIDER
+        value: mock
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: YOLO_ENDPOINT_URL
+        value: ""
+      - key: YOLO_API_KEY
+        value: ""

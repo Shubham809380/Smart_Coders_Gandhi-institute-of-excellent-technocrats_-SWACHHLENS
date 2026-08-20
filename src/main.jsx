@@ -4,6 +4,7 @@ import { registerSW } from "virtual:pwa-register";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { SocketProvider } from "./utils/socket.jsx";
 import { heartbeatService } from "./services.js";
+import MuiTheme from "./MuiTheme.jsx";
 import App from "./App.jsx";
 import "./styles.css";
 
@@ -16,7 +17,9 @@ heartbeatService.start();
 createRoot(document.getElementById("root")).render(
   <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
     <SocketProvider>
-      <App />
+      <MuiTheme>
+        <App />
+      </MuiTheme>
     </SocketProvider>
   </GoogleOAuthProvider>
 );

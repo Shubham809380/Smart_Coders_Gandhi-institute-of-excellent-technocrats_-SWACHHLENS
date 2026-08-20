@@ -150,8 +150,8 @@ export async function initDatabase() {
     console.log("Neon database schema initialized.");
 
   try {
-    await db.query("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days')");
-    await db.query("UPDATE sessions SET expires_at = NOW() + INTERVAL '7 days' WHERE expires_at IS NULL");
+    await db.query("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '3 days')");
+    await db.query("UPDATE sessions SET expires_at = NOW() + INTERVAL '3 days' WHERE expires_at IS NULL");
     await db.query("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ DEFAULT NOW()");
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS duty_status TEXT DEFAULT 'off_duty'");
     await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS rejection_reason TEXT DEFAULT ''");

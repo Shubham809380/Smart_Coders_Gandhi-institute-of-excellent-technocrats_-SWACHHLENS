@@ -370,7 +370,7 @@ export async function handleApiRequest(req, res) {
       const reportId = `REP-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
       const beforeMedia = saveDataUrlMedia(payload.image, `reports/${auth.user.uid}/${reportId}/before`);
       const videoMedia = saveDataUrlMedia(payload.video, `reports/${auth.user.uid}/${reportId}/before-video`);
-      const aiAnalysis = { wasteType: payload.aiResult.wasteType, confidence: payload.aiResult.confidence, estimatedVolume: payload.aiResult.estimatedVolume, estimatedVolumeRange: payload.aiResult.estimatedVolumeRange, severity: payload.aiResult.severity, potentialRisks: String(payload.aiResult.potentialRisk || "").split(",").map((s) => s.trim()).filter(Boolean), recommendation: payload.aiResult.recommendation };
+      const aiAnalysis = { wasteType: payload.aiResult.wasteType, confidence: Math.round(Number(payload.aiResult.confidence) || 0), estimatedVolume: payload.aiResult.estimatedVolume, estimatedVolumeRange: payload.aiResult.estimatedVolumeRange, severity: payload.aiResult.severity, potentialRisks: String(payload.aiResult.potentialRisk || "").split(",").map((s) => s.trim()).filter(Boolean), recommendation: payload.aiResult.recommendation };
 
       let resolvedAddress = payload.location.address || "";
       if ((!resolvedAddress || resolvedAddress.startsWith("Detected location")) && payload.location.latitude && payload.location.longitude) {

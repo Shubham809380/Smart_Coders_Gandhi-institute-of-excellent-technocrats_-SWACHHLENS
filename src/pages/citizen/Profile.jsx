@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { createTheme, ThemeProvider } from "@mui/material/styles";
 import {
   AppBar, Toolbar, Typography, Avatar, Box, Card, CardContent, Chip, Switch, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Stack, Divider,
@@ -16,10 +15,6 @@ import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import {
   reportService, authService, profileService, permissionService,
 } from "../../services.js";
-
-const MANROPE_THEME = createTheme({
-  typography: { fontFamily: "'Manrope', sans-serif" },
-});
 
 const ROLE_CONFIG = {
   citizen: { label: "Citizen", icon: <Person />, color: "success", gradient: "linear-gradient(135deg, #006b2c, #00a843)" },
@@ -220,13 +215,12 @@ export default function Profile() {
   }
 
   return (
-    <ThemeProvider theme={MANROPE_THEME}>
     <Box sx={{ minHeight: "100vh", bgcolor: "grey.50", pb: 12 }}>
       {/* Header */}
       <Paper elevation={0} sx={{ borderRadius: 0, borderBottom: "1px solid", borderColor: "grey.100" }}>
         <Container maxWidth="sm">
           <Toolbar sx={{ justifyContent: "space-between", px: 0, py: 1 }}>
-            <Typography variant="h5" fontWeight={800} color="grey.900" fontFamily="Manrope">
+            <Typography variant="h5" fontWeight={800} color="grey.900">
               Profile
             </Typography>
             <Tooltip title="Edit profile">
@@ -266,7 +260,7 @@ export default function Profile() {
                 </Avatar>
               )}
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="subtitle1" fontWeight={800} color="grey.900" noWrap fontFamily="Manrope">
+                <Typography variant="subtitle1" fontWeight={800} color="grey.900" noWrap>
                   {userName}
                 </Typography>
                 <Typography variant="body2" fontWeight={500} color="grey.500" noWrap>
@@ -468,7 +462,7 @@ export default function Profile() {
         fullWidth
         PaperProps={{ sx: { borderRadius: 4, mx: 2 } }}
       >
-        <DialogTitle sx={{ fontWeight: 800, fontFamily: "Manrope", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <DialogTitle sx={{ fontWeight: 800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           Edit Profile
           <IconButton size="small" onClick={() => setEditOpen(false)}>
             <Close fontSize="small" />
@@ -536,7 +530,7 @@ export default function Profile() {
         fullWidth
         PaperProps={{ sx: { borderRadius: 4, mx: 2 } }}
       >
-        <DialogTitle sx={{ fontWeight: 800, fontFamily: "Manrope", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <DialogTitle sx={{ fontWeight: 800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           Change Password
           <IconButton size="small" onClick={() => setPwOpen(false)}>
             <Close fontSize="small" />
@@ -621,6 +615,5 @@ export default function Profile() {
         </DialogActions>
       </Dialog>
     </Box>
-    </ThemeProvider>
   );
 }

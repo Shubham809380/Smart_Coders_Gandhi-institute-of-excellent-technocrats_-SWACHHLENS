@@ -3,6 +3,7 @@
 .env.local
 .env.*
 !.env.example
+!.env.example.frontend
 
 # === NODE ===
 node_modules/

@@ -9,6 +9,7 @@ import { uploadToCloudinary } from "./cloudinary.js";
 const API_BASE = "/api";
 const STORAGE_KEY = "swachhlens-client-state-v4";
 const TOKEN_KEY = "swachhlens-session-token";
+const SESSION_EXPIRED_KEY = "swachhlens-session-expired";
 const MIN_SPLASH_MS = 1500;
 
 function clone(value) {
@@ -167,9 +168,10 @@ export const appService = {
                 state.currentUser = data.currentUser;
                 const appState = data.role && data.role !== "citizen" ? APP_STATES.AUTHENTICATED_ADMIN : APP_STATES.AUTHENTICATED_CITIZEN;
                 state.startup = { appState, loading: false, error: "" };
-            } catch {
+            } catch (err) {
                 setToken("");
                 state.currentUser = null;
+                try { sessionStorage.setItem(SESSION_EXPIRED_KEY, "1"); } catch {}
                 state.startup = { appState: APP_STATES.UNAUTHENTICATED, loading: false, error: "" };
             }
         } else {
@@ -573,4 +575,12 @@ export function getStateSnapshot() {
         currentRole: state.currentUser?.role || null,
         routeForCurrentRole: roleToRoute(state.currentUser?.role),
     };
+}
+
+export function popSessionExpired() {
+    try {
+        const v = sessionStorage.getItem(SESSION_EXPIRED_KEY);
+        if (v) { sessionStorage.removeItem(SESSION_EXPIRED_KEY); return true; }
+    } catch {}
+    return false;
 }
