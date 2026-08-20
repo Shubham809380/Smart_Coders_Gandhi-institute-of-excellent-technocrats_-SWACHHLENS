@@ -1,0 +1,16 @@
+node_modules
+swachhlens-ai/checkpoints
+swachhlens-ai/training/images
+swachhlens-ai/training/labels
+swachhlens-ai/training/runs
+backend
+swachhlens-ai
+dist
+*.pyc
+__pycache__
+.git
+.env*
+!.env.example
+.vscode
+.idea
+*.log
