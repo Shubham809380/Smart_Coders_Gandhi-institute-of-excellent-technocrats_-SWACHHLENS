@@ -2797,4 +2797,58 @@ input[type="file"] {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* Landscape responsive */
+@media (orientation: landscape) and (max-height: 500px) {
+    .splash-logo-container {
+        width: min(90px, 25vw);
+        height: min(90px, 25vw);
+    }
+
+    .splash-title {
+        font-size: 20px;
+    }
+
+    .splash-subtitle {
+        font-size: 12px;
+    }
+
+    .perm-card {
+        max-width: min(340px, 85vw);
+        padding: 20px;
+    }
+
+    .perm-icon {
+        width: min(64px, 18vw);
+        height: min(64px, 18vw);
+        margin-bottom: 16px;
+    }
+
+    .perm-title {
+        font-size: 20px;
+    }
+
+    .perm-desc {
+        font-size: 12px;
+        max-width: min(260px, 70vw);
+    }
+}
+
+@media (orientation: landscape) and (max-height: 400px) {
+    .splash-logo-container {
+        width: min(70px, 20vw);
+        height: min(70px, 20vw);
+    }
+
+    .perm-card {
+        max-width: min(300px, 80vw);
+        padding: 16px;
+    }
+
+    .perm-icon {
+        width: min(52px, 15vw);
+        height: min(52px, 15vw);
+        margin-bottom: 12px;
+    }
+}
 }

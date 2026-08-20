@@ -406,6 +406,45 @@ export async function handleApiRequest(req, res) {
       return json(res, 200, { report: formatReportForClient(report) });
     }
 
+    if (pathname.match(/^\/api\/reports\/[^/]+$/) && pathname.split("/").length === 4 && req.method === "PUT") {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      const reportId = pathname.split("/").pop();
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
+      if (report.citizenId !== auth.user.uid && !ADMIN_ROLES.includes(auth.user.role)) {
+        return json(res, 403, { error: { code: "FORBIDDEN", message: "You can only edit your own reports." } });
+      }
+      if (report.status !== "submitted") {
+        return json(res, 400, { error: { code: "CANNOT_EDIT", message: "Only submitted reports can be edited." } });
+      }
+      const body = await readJson(req);
+      const updates = {};
+      if (body.comment !== undefined) updates.citizenComment = String(body.comment || "");
+      if (Object.keys(updates).length === 0) return json(res, 400, { error: { code: "VALIDATION", message: "No fields to update." } });
+      const updated = await store.updateReport(reportId, updates);
+      if (io) io.emit("waste:updated", formatReportForClient(updated));
+      return json(res, 200, { report: formatReportForClient(updated) });
+    }
+
+    if (pathname.match(/^\/api\/reports\/[^/]+$/) && pathname.split("/").length === 4 && req.method === "DELETE") {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      const reportId = pathname.split("/").pop();
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
+      if (report.citizenId !== auth.user.uid && !ADMIN_ROLES.includes(auth.user.role)) {
+        return json(res, 403, { error: { code: "FORBIDDEN", message: "You can only delete your own reports." } });
+      }
+      if (report.status !== "submitted") {
+        return json(res, 400, { error: { code: "CANNOT_DELETE", message: "Only submitted reports can be deleted." } });
+      }
+      const pool = (await import("./db.js")).getPool();
+      await pool.query("DELETE FROM reports WHERE id = $1", [reportId]);
+      if (io) io.emit("waste:deleted", { reportId });
+      return json(res, 200, { ok: true });
+    }
+
     if (pathname.match(/^\/api\/reports\/[^/]+\/status$/) && req.method === "PATCH") {
       const auth = await requireAuth(req, res);
       if (!auth) return;

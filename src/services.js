@@ -163,15 +163,27 @@ export const appService = {
         state.startup = { appState: APP_STATES.INITIALIZING, loading: true, error: "" };
         const token = getToken();
         if (token) {
-            try {
-                const data = await api("/auth/me");
-                state.currentUser = data.currentUser;
-                const appState = data.role && data.role !== "citizen" ? APP_STATES.AUTHENTICATED_ADMIN : APP_STATES.AUTHENTICATED_CITIZEN;
-                state.startup = { appState, loading: false, error: "" };
-            } catch (err) {
-                setToken("");
-                state.currentUser = null;
-                try { sessionStorage.setItem(SESSION_EXPIRED_KEY, "1"); } catch {}
+            let lastErr = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const data = await api("/auth/me");
+                    state.currentUser = data.currentUser;
+                    const appState = data.role && data.role !== "citizen" ? APP_STATES.AUTHENTICATED_ADMIN : APP_STATES.AUTHENTICATED_CITIZEN;
+                    state.startup = { appState, loading: false, error: "" };
+                    lastErr = null;
+                    break;
+                } catch (err) {
+                    lastErr = err;
+                    if (attempt < 2) await delay(1000 * (attempt + 1));
+                }
+            }
+            if (lastErr) {
+                const is401 = lastErr?.message?.includes("401") || lastErr?.message?.includes("Unauthorized") || lastErr?.message?.includes("sign in");
+                if (is401) {
+                    setToken("");
+                    state.currentUser = null;
+                    try { sessionStorage.setItem(SESSION_EXPIRED_KEY, "1"); } catch {}
+                }
                 state.startup = { appState: APP_STATES.UNAUTHENTICATED, loading: false, error: "" };
             }
         } else {
@@ -397,6 +409,17 @@ export const reportService = {
     },
     async saveAfterPhoto(id, afterImage) {
         return this.updateReportStatus(id, "verification", { afterImage });
+    },
+    async updateReport(id, updates) {
+        const data = await api(`/reports/${id}`, { method: "PUT", body: JSON.stringify(updates) });
+        const idx = state.reports.findIndex((r) => r.id === id);
+        if (idx !== -1) state.reports[idx] = data.report;
+        return clone(data.report);
+    },
+    async deleteReport(id) {
+        await api(`/reports/${id}`, { method: "DELETE" });
+        state.reports = state.reports.filter((r) => r.id !== id);
+        return true;
     },
 };
 
