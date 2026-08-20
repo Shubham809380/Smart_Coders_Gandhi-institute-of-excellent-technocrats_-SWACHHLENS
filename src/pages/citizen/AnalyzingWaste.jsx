@@ -114,8 +114,8 @@ export default function AnalyzingWaste() {
           <ErrorIcon sx={{ fontSize: 42, color: "error.main" }} />
         </Box>
         <Typography variant="h6" fontWeight={700} textAlign="center" gutterBottom>Analysis Failed</Typography>
-        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ maxWidth: 280, mb: 4 }}>{error}</Typography>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, width: "100%", maxWidth: 280 }}>
+        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ maxWidth: { xs: 280, sm: 360 }, mb: 4 }}>{error}</Typography>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, width: "100%", maxWidth: { xs: 280, sm: 360 } }}>
           <Box component="button" onClick={handleRetry} sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, width: "100%", py: 2.25, borderRadius: 3, bgcolor: "primary.main", color: "white", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer", transition: "all 0.2s", boxShadow: "0 8px 24px -4px rgba(0,107,44,0.3)", "&:hover": { transform: "translateY(-1px)" }, "&:active": { transform: "scale(0.98)" } }}>
             <RetryIcon fontSize="small" /> Retry Analysis
           </Box>
@@ -170,12 +170,12 @@ export default function AnalyzingWaste() {
         <Typography variant="h6" fontWeight={700} textAlign="center" sx={{ animation: `${fadeInUp} 0.5s ease 0.1s both` }}>
           {completed ? "Analysis Complete" : "AI Analysis in Progress"}
         </Typography>
-        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 0.75, maxWidth: 260, animation: `${fadeInUp} 0.5s ease 0.2s both` }}>
+        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 0.75, maxWidth: { xs: 260, sm: 340 }, animation: `${fadeInUp} 0.5s ease 0.2s both` }}>
           {completed ? "Redirecting to results..." : "Processing image data with our AI models."}
         </Typography>
 
         {/* Steps */}
-        <Box sx={{ width: "100%", maxWidth: 380, mt: 4, display: "flex", flexDirection: "column", gap: 0.5 }}>
+        <Box sx={{ width: "100%", maxWidth: { xs: 340, sm: 420 }, mt: 4, display: "flex", flexDirection: "column", gap: 0.5 }}>
           {STEPS.map((step, i) => {
             const done = i < currentStep || completed;
             const active = i === currentStep && !completed;

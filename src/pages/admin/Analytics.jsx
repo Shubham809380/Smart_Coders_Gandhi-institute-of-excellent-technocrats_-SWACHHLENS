@@ -156,7 +156,7 @@ export default function Analytics() {
     return (
       <div className="flex h-screen bg-gray-50">
         <AdminSidebar />
-        <div className="flex-1 flex items-center justify-center ml-0 md:ml-64">
+        <div className="flex-1 flex items-center justify-center ml-0 lg:ml-72 pl-16 lg:pl-0">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
             <p className="text-gray-500 font-medium">Loading analytics...</p>
@@ -170,7 +170,7 @@ export default function Analytics() {
     return (
       <div className="flex h-screen bg-gray-50">
         <AdminSidebar />
-        <div className="flex-1 flex items-center justify-center ml-0 md:ml-64">
+        <div className="flex-1 flex items-center justify-center ml-0 lg:ml-72 pl-16 lg:pl-0">
           <div className="flex flex-col items-center gap-4 text-center px-4">
             <span className="material-symbols-outlined text-6xl text-red-400">
               error
@@ -212,8 +212,8 @@ export default function Analytics() {
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <AdminSidebar />
 
-      <div className="flex-1 ml-0 md:ml-64 overflow-y-auto">
-        <div className="p-4 md:p-8 max-w-7xl mx-auto">
+      <div className="flex-1 ml-0 lg:ml-72 pl-16 lg:pl-0 overflow-y-auto">
+        <div className="p-4 lg:p-8 max-w-7xl mx-auto">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
             <div className="flex items-center gap-3">
@@ -536,7 +536,7 @@ export default function Analytics() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <div className="flex items-end gap-px min-w-[600px] h-40 px-2 pb-6 relative">
+                <div className="flex items-end gap-px min-w-[360px] sm:min-w-[500px] h-40 px-2 pb-6 relative">
                   {/* Y-axis lines */}
                   <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
                     {[0, 1, 2, 3, 4].map((i) => (

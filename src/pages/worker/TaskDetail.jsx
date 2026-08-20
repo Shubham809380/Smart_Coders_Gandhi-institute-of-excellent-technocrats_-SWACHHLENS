@@ -242,7 +242,7 @@ export default function TaskDetail() {
       </div>
 
       {toast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg z-50 text-sm font-bold animate-bounce">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg z-50 text-sm font-bold animate-bounce max-w-[85vw]">
           {toast}
         </div>
       )}

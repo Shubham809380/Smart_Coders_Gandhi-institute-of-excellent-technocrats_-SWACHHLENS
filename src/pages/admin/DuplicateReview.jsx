@@ -96,7 +96,7 @@ export default function DuplicateReview() {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <AdminSidebar />
-      <main className="flex-1 ml-0 md:ml-64 p-4 md:p-8">
+      <main className="flex-1 ml-0 lg:ml-72 pl-16 lg:pl-0 p-4 lg:p-8">
         <div className="max-w-5xl mx-auto">
           <div className="mb-8">
             <button

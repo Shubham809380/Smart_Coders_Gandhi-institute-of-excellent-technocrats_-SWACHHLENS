@@ -293,7 +293,7 @@ export default function Profile() {
         </Box>
 
         {/* Quick Actions */}
-        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 3 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "1fr 1fr" }, gap: 2, mb: 3 }}>
           <Card
             elevation={0}
             onClick={() => navigate("/my-reports")}

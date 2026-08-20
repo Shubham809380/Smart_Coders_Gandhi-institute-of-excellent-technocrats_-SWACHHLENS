@@ -1390,8 +1390,8 @@ input[type="file"] {
 }
 
 .splash-logo-container {
-    width: 130px;
-    height: 130px;
+    width: min(130px, 35vw);
+    height: min(130px, 35vw);
     border-radius: 36px;
     overflow: hidden;
     background: rgba(0, 135, 58, 0.2);
@@ -1665,7 +1665,7 @@ input[type="file"] {
     position: relative;
     z-index: 2;
     width: 100%;
-    max-width: 380px;
+    max-width: min(380px, 90vw);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1680,8 +1680,8 @@ input[type="file"] {
 
 /* Icon */
 .perm-icon {
-    width: 88px;
-    height: 88px;
+    width: min(88px, 22vw);
+    height: min(88px, 22vw);
     border-radius: 28px;
     display: grid;
     place-items: center;
@@ -1712,7 +1712,7 @@ input[type="file"] {
     line-height: 1.6;
     color: rgba(255, 255, 255, 0.5);
     text-align: center;
-    max-width: 300px;
+    max-width: min(300px, 80vw);
 }
 
 /* Status badge */

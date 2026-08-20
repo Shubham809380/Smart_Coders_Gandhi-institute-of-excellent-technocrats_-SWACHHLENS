@@ -242,7 +242,7 @@ export default function AIResults() {
           </Paper>
 
           {/* Volume + Severity grid */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, animation: `${fadeIn} 0.5s ease 0.25s both` }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, animation: `${fadeIn} 0.5s ease 0.25s both` }}>
             <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'grey.100' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
                 <Box sx={{ width: 28, height: 28, borderRadius: 1.5, bgcolor: 'rgba(37,99,235,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -311,7 +311,7 @@ export default function AIResults() {
                 </Box>
                 <Typography variant="body2" fontWeight={600}>Dispatch Plan</Typography>
               </Box>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
                 {analysis.dispatch.team && (
                   <Box>
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>Team</Typography>
@@ -352,7 +352,7 @@ export default function AIResults() {
                 </Box>
                 <Typography variant="body2" fontWeight={600}>Detection Details</Typography>
               </Box>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
                 <Box>
                   <Typography variant="caption" color="text.secondary" fontWeight={600}>Objects</Typography>
                   <Typography variant="body2" fontWeight={600}>{analysis.detectionSummary.count}</Typography>
