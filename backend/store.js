@@ -301,6 +301,11 @@ export const store = {
     let i = 1;
     if (filters.status) {
       if (filters.status === "open") sql += ` AND status NOT IN ('resolved', 'rejected', 'duplicate')`;
+      else if (String(filters.status).includes(",")) {
+        const list = String(filters.status).split(",").map((s) => s.trim()).filter(Boolean);
+        sql += ` AND status = ANY($${i++})`;
+        params.push(list);
+      }
       else { sql += ` AND status = $${i++}`; params.push(filters.status); }
     }
     if (filters.severity) { sql += ` AND ai_severity = $${i++}`; params.push(filters.severity); }

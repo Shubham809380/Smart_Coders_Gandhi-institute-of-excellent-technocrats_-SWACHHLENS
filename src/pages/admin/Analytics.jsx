@@ -67,7 +67,7 @@ export default function Analytics() {
   }
 
   const k = data.kpis || {};
-  const timeline = (data.timeline || []).map((r) => ({ label: String(r.date).slice(5), value: r.count }));
+  const timeline = (data.timeline || []).map((r) => ({ label: String(r.date).slice(5, 10), value: r.count }));
   const categories = (data.byCategory || []).map((r) => ({ label: wasteTypeLabel(r.category), value: r.count }));
   const wards = (data.byWard || []).slice(0, 8).map((r) => ({ label: r.ward.replace(/^ward[-_]?/i, "W") || "—", value: r.count }));
   const severities = (data.bySeverity || []).filter((r) => r.severity).map((r) => ({ label: r.severity, value: r.count }));

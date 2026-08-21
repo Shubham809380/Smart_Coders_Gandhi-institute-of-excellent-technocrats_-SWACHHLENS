@@ -11,6 +11,16 @@ import "./styles.css";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "914852359886-14qs4268lk6ogubt6iho80lkheuffu66.apps.googleusercontent.com";
 
 registerSW({ immediate: true });
+
+// When a new service worker takes control (first install or update), reload once
+// so the app never keeps running a stale or broken cached bundle.
+let swRefreshing = false;
+navigator.serviceWorker?.addEventListener("controllerchange", () => {
+  if (swRefreshing) return;
+  swRefreshing = true;
+  window.location.reload();
+});
+
 heartbeatService.start();
 
 createRoot(document.getElementById("root")).render(

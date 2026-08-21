@@ -356,17 +356,16 @@ export default function Profile() {
           {/* Theme Switcher */}
           <SettingsRow
             icon={<Box sx={{ display: 'flex', fontSize: 20, color: themeMode === 'dark' ? 'grey.400' : 'grey.700' }}>
-              {themeMode === 'dark' ? '🌙' : themeMode === 'light' ? '☀️' : '💻'}
+              {themeMode === 'dark' ? '🌙' : '☀️'}
             </Box>}
-            iconColor={themeMode === 'dark' ? 'grey' : themeMode === 'light' ? 'warning' : 'info'}
+            iconColor={themeMode === 'dark' ? 'grey' : 'warning'}
             title="Appearance"
-            subtitle={themeMode === 'dark' ? 'Dark mode active' : themeMode === 'light' ? 'Light mode active' : 'Follow system'}
+            subtitle={themeMode === 'dark' ? 'Dark mode active' : 'Light mode active'}
             action={
               <Box sx={{ display: 'flex', gap: 0, border: '1px solid', borderColor: 'grey.200', borderRadius: 2, p: 0.25 }}>
                 {[
                   { key: 'light', icon: '☀️', tip: 'Light' },
                   { key: 'dark', icon: '🌙', tip: 'Dark' },
-                  { key: 'system', icon: '💻', tip: 'System' },
                 ].map((opt) => (
                   <Box
                     key={opt.key}

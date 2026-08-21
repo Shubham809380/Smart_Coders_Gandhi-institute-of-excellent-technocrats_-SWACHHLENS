@@ -48,7 +48,6 @@ function ThemeSwitcher() {
   const options = [
     { value: "light", icon: "sun", label: "Light" },
     { value: "dark", icon: "moon", label: "Dark" },
-    { value: "system", icon: "monitor", label: "System" },
   ];
   return (
     <div className="flex items-center rounded-lg p-0.5 gap-0.5" style={{ background: "var(--adm-surface-2)" }} role="radiogroup" aria-label="Theme">

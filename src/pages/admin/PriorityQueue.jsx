@@ -79,7 +79,7 @@ export default function PriorityQueue() {
 
   const { connected } = useLive(
     () => load(),
-    ["waste:created", "waste:updated", "complaint:escalated"],
+    ["waste:new", "waste:updated", "waste:status:update", "complaint:escalated"],
     { pollMs: 30000, poll: load }
   );
 

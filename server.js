@@ -19,9 +19,14 @@ const staticRoot = join(rootDir, "dist");
 const contentTypes = {
   ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml", ".webp": "image/webp", ".mp4": "video/mp4",
+  ".ico": "image/x-icon", ".woff": "font/woff", ".woff2": "font/woff2",
 };
+// Source-tree fallback is ONLY for static media referenced before build (e.g. /src/logo.svg).
+// Never serve executable source files (.js/.jsx/.ts/.tsx/.html) from outside dist.
+const MEDIA_FALLBACK_EXTS = new Set([".svg", ".png", ".jpg", ".jpeg", ".webp", ".ico", ".mp4", ".woff", ".woff2"]);
 
 function sendFile(res, filePath) {
   const ext = extname(filePath).toLowerCase();
@@ -47,9 +52,19 @@ function startServer(portToUse) {
         return;
       }
       const assetPath = urlPath === "/" ? "" : urlPath;
-      const safePath = normalize(join(rootDir, assetPath || "dist/index.html"));
-      if (!safePath.startsWith(rootDir)) { res.writeHead(403); res.end("Forbidden"); return; }
-      if (assetPath && existsSync(safePath) && statSync(safePath).isFile()) { sendFile(res, safePath); return; }
+      // 1) Serve built files from dist/ first (index.html, /assets/*, sw.js, manifest).
+      let filePath = normalize(join(staticRoot, assetPath || "index.html"));
+      if (!(filePath.startsWith(staticRoot) && existsSync(filePath) && statSync(filePath).isFile())) {
+        // 2) Restricted fallback into the source tree for media only.
+        const srcPath = normalize(join(rootDir, assetPath));
+        const ext = extname(srcPath).toLowerCase();
+        filePath =
+          assetPath && srcPath.startsWith(rootDir) && MEDIA_FALLBACK_EXTS.has(ext) &&
+          existsSync(srcPath) && statSync(srcPath).isFile()
+            ? srcPath
+            : "";
+      }
+      if (filePath) { sendFile(res, filePath); return; }
       sendFile(res, join(staticRoot, "index.html"));
     } catch (error) {
       console.error("Server error:", error);
