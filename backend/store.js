@@ -332,18 +332,18 @@ export const store = {
 
   async getDuplicateGroups() {
     const res = await query(
-      `SELECT duplicate_primary_report_id as groupId, array_agg(id) as reportIds, COUNT(*) as count, MAX(duplicate_similarity_score) as maxSimilarity
+      `SELECT duplicate_primary_report_id AS group_id, array_agg(id) AS report_ids, COUNT(*) AS member_count, MAX(duplicate_similarity_score) AS max_similarity
        FROM reports WHERE duplicate_is_potential = true AND duplicate_primary_report_id != ''
-       GROUP BY duplicate_primary_report_id HAVING COUNT(*) > 1 ORDER BY maxSimilarity DESC`
+       GROUP BY duplicate_primary_report_id HAVING COUNT(*) > 1 ORDER BY max_similarity DESC`
     );
     const groups = [];
     for (const row of res.rows) {
-      const reportsRes = await query("SELECT * FROM reports WHERE id = ANY($1) OR id = $2", [row.reportIds, row.groupId]);
+      const reportsRes = await query("SELECT * FROM reports WHERE id = ANY($1) OR id = $2 ORDER BY created_at ASC", [row.report_ids, row.group_id]);
       groups.push({
-        groupId: row.groupId,
+        groupId: row.group_id,
         reports: reportsRes.rows.map(rowToReport),
-        count: Number(row.count),
-        maxSimilarity: Number(row.maxSimilarity),
+        count: Number(row.member_count),
+        maxSimilarity: Number(row.max_similarity || 0),
       });
     }
     return groups;
