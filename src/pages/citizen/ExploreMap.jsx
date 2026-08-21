@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import BottomNav from '../../components/BottomNav.jsx';
 import GoogleMap, { DEFAULT_CENTER, SEVERITY_COLORS } from '../../components/GoogleMap.jsx';
 import { reportService, vehicleService } from '../../services.js';
-import { useSocket } from '../../utils/socket.jsx';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -88,51 +87,26 @@ export default function ExploreMap() {
   const touchStartY = useRef(0);
   const hasCenteredOnInitialLocation = useRef(false);
 
-  const socket = useSocket();
-
   useEffect(() => {
-    Promise.all([
-      reportService.getReports().catch(() => []),
-      vehicleService.getVehicles().catch(() => []),
-    ])
-      .then(([rData, vData]) => {
+    let cancelled = false;
+    const refresh = () => {
+      Promise.all([
+        reportService.getReports().catch(() => []),
+        vehicleService.getVehicles().catch(() => []),
+      ]).then(([rData, vData]) => {
+        if (cancelled) return;
         setReports(rData || []);
         setVehicles(vData || []);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (!socket) return;
-    const onVehicleUpdate = (vehicle) => {
-      setVehicles((prev) => {
-        const idx = prev.findIndex((v) => v.id === vehicle.id);
-        if (idx >= 0) {
-          const next = [...prev];
-          next[idx] = vehicle;
-          return next;
-        }
-        return [...prev, vehicle];
+        setLoading(false);
       });
     };
-    const onWasteCreated = (report) => {
-      setReports((prev) => {
-        if (prev.some((r) => r.id === report.id)) return prev;
-        return [report, ...prev];
-      });
-    };
-    const onStatusUpdate = (report) => {
-      setReports((prev) => prev.map((r) => r.id === report.id ? report : r));
-    };
-    socket.on('vehicle:location:update', onVehicleUpdate);
-    socket.on('waste:created', onWasteCreated);
-    socket.on('waste:status:update', onStatusUpdate);
+    refresh();
+    const intervalId = setInterval(refresh, 10000);
     return () => {
-      socket.off('vehicle:location:update', onVehicleUpdate);
-      socket.off('waste:created', onWasteCreated);
-      socket.off('waste:status:update', onStatusUpdate);
+      cancelled = true;
+      clearInterval(intervalId);
     };
-  }, [socket]);
+  }, []);
 
   useEffect(() => {
     if (!navigator.geolocation) {

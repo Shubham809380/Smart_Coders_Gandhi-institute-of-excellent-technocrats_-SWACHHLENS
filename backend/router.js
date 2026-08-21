@@ -641,9 +641,7 @@ export async function handleApiRequest(req, res) {
       const report = await store.getReportById(reportId);
       await store.createNotification({ userId: report.citizenId, title: "Cleanup team assigned", body: `${team.name} is now assigned to ${reportId}.`, kind: "assignment", reportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `assigned_${teamId}_to_${reportId}` });
-      if (io) {
-      }
-      return json(res, 200, { report: formatReportForClient(report), team: formatTeamForClient(team) });
+return json(res, 200, { report: formatReportForClient(report), team: formatTeamForClient(team) });
     }
 
     const escalateMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/escalate$/);
@@ -661,9 +659,7 @@ export async function handleApiRequest(req, res) {
       await store.createNotification({ userId: report.citizenId, title: "Complaint escalated", body: `${reportId} has been escalated for priority action.`, kind: "escalation", reportId });
       await store.createNotification({ userId: "user-admin", title: "Complaint escalated", body: `${auth.user.name} escalated ${reportId}.`, kind: "escalation", reportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `escalated_${reportId}` });
-      if (io) {
-      }
-      return json(res, 200, { report: formatReportForClient(updated) });
+return json(res, 200, { report: formatReportForClient(updated) });
     }
 
     const markDupMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/duplicate$/);
@@ -679,9 +675,7 @@ export async function handleApiRequest(req, res) {
       const { report } = await store.markAsDuplicate(reportId, primaryReportId);
       await store.createNotification({ userId: report.citizenId, title: "Merged with existing complaint", body: `${reportId} was merged into ${primaryReportId}. You will get updates on the original complaint.`, kind: "duplicate", reportId: primaryReportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `marked_${reportId}_duplicate_of_${primaryReportId}` });
-      if (io) {
-      }
-      return json(res, 200, { ok: true, report: formatReportForClient(report) });
+return json(res, 200, { ok: true, report: formatReportForClient(report) });
     }
 
     const recycleMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/recycle$/);
@@ -744,9 +738,7 @@ export async function handleApiRequest(req, res) {
         }
       }
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `bulk_assigned_${assigned.length}_reports_to_${teamId}` });
-      if (io) {
-      }
-      return json(res, 200, { assignedCount: assigned.length, reports: assigned, team: formatTeamForClient(team) });
+return json(res, 200, { assignedCount: assigned.length, reports: assigned, team: formatTeamForClient(team) });
     }
 
     if (pathname === "/api/admin/hotspots" && req.method === "GET") {

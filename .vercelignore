@@ -3,7 +3,6 @@ swachhlens-ai/checkpoints
 swachhlens-ai/training/images
 swachhlens-ai/training/labels
 swachhlens-ai/training/runs
-backend
 swachhlens-ai
 dist
 *.pyc

@@ -2,14 +2,19 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://swachhlens-api.onrender.com/api/$1"
+      "destination": "/api/index"
     },
     {
-      "source": "/socket.io/(.*)",
-      "destination": "https://swachhlens-api.onrender.com/socket.io/$1"
+      "source": "/uploads/(.*)",
+      "destination": "/api/index"
     }
   ],
   "headers": [

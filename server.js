@@ -3,11 +3,9 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Server as SocketIOServer } from "socket.io";
 import { initDatabase } from "./backend/db.js";
-import { seedDatabase } from "./backend/seed-neon.js";
-import { handleApiRequest, setSocketIO } from "./backend/router.js";
-import { store } from "./backend/store.js";
+import { seedDatabase, seedVehicles } from "./backend/seed-neon.js";
+import { handleApiRequest } from "./backend/router.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const rootDir = normalize(join(__filename, ".."));
@@ -38,7 +36,12 @@ function startServer(portToUse) {
         await handleApiRequest(req, res);
         return;
       }
-      const assetPath = urlPath.startsWith("/uploads/") ? urlPath.replace(/^\/uploads\//, "backend/uploads/") : urlPath === "/" ? "" : urlPath;
+      if (urlPath.startsWith("/uploads/")) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+      const assetPath = urlPath === "/" ? "" : urlPath;
       const safePath = normalize(join(rootDir, assetPath || "dist/index.html"));
       if (!safePath.startsWith(rootDir)) { res.writeHead(403); res.end("Forbidden"); return; }
       if (assetPath && existsSync(safePath) && statSync(safePath).isFile()) { sendFile(res, safePath); return; }
@@ -48,28 +51,6 @@ function startServer(portToUse) {
       res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: { code: "SERVER_ERROR", message: "Internal server error." } }));
     }
-  });
-
-  const io = new SocketIOServer(server, { cors: { origin: "*" } });
-  setSocketIO(io);
-
-  io.on("connection", (socket) => {
-    console.log(`Socket.IO client connected: ${socket.id}`);
-
-    socket.on("vehicle:update_location", async (data) => {
-      try {
-        if (!data?.id || !data?.latitude || !data?.longitude) return;
-        const vehicle = await store.updateVehicleLocation(data.id, {
-          latitude: data.latitude, longitude: data.longitude,
-          label: data.label, speedKmh: data.speedKmh, heading: data.heading, status: data.status,
-        });
-        if (vehicle) io.emit("vehicle:location:update", vehicle);
-      } catch (err) { console.error("Vehicle location update error:", err); }
-    });
-
-    socket.on("disconnect", () => {
-      console.log(`Socket.IO client disconnected: ${socket.id}`);
-    });
   });
 
   server.on("error", (error) => {
@@ -98,24 +79,6 @@ async function main() {
     console.warn("Starting server without database. API calls will fail until DB is reachable.");
   }
   startServer(defaultPort);
-}
-
-async function seedVehicles() {
-  try {
-    const existing = await store.getVehicles();
-    if (existing.length > 0) return;
-    const seedVehicles = [
-      { id: "veh-01", teamId: "team-07", name: "Vehicle 01", vehicleType: "Mini Tipper", status: "collecting", latitude: 20.2978, longitude: 85.8265, label: "Ward 12 Depot", assignedArea: "Ward 12" },
-      { id: "veh-02", teamId: "team-03", name: "Vehicle 02", vehicleType: "Flatbed", status: "en_route", latitude: 20.3018, longitude: 85.8215, label: "Unit 1 Market", assignedArea: "Ward North" },
-      { id: "veh-03", teamId: "team-alpha", name: "Vehicle 03", vehicleType: "Mini Tipper", status: "collecting", latitude: 20.2961, longitude: 85.8245, label: "1420 Main St", assignedArea: "Ward 12" },
-    ];
-    for (const v of seedVehicles) {
-      await store.createVehicle(v);
-    }
-    console.log("Seed vehicles created.");
-  } catch (err) {
-    console.error("Vehicle seed error:", err.message);
-  }
 }
 
 main();
