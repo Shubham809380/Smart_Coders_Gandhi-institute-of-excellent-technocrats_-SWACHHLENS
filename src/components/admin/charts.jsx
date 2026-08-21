@@ -8,11 +8,26 @@ function niceMax(value) {
 
 const PALETTE = ["#00A896", "#4C8DFF", "#D9A40E", "#E5484D", "#8B5CF6", "#2FA96C", "#F0763B"];
 
-export function LineChart({ series = [], height = 220, yLabel = "", formatX = (v) => v }) {
+export function LineChart({ data, series: seriesProp, height = 220, yLabel = "", formatX = (v) => v }) {
   const [hover, setHover] = useState(null);
   const w = 640;
   const h = height;
   const pad = { l: 40, r: 12, t: 14, b: 26 };
+
+  // Accept either data=[{label,value}] (single series) or series=[{name,color,points}]
+  const { series, fromData } = useMemo(() => {
+    if (Array.isArray(seriesProp) && seriesProp.length) {
+      return {
+        fromData: false,
+        series: seriesProp.map((s) => ({
+          ...s,
+          points: s.points.map((p, i) => (typeof p === "number" ? { x: i + 1, y: p } : p)),
+        })),
+      };
+    }
+    return { fromData: true, series: [{ name: "", points: (data || []).map((d, i) => ({ x: i + 1, y: d.value, label: d.label })) }] };
+  }, [data, seriesProp]);
+
   const allPoints = series.flatMap((s) => s.points);
   const maxX = Math.max(1, ...allPoints.map((p) => p.x));
   const maxY = niceMax(Math.max(1, ...allPoints.map((p) => p.y)));
@@ -35,9 +50,14 @@ export function LineChart({ series = [], height = 220, yLabel = "", formatX = (v
           </text>
         </g>
       ))}
-      {xTicks.map((t) => (
-        <text key={t} x={sx(t)} y={h - 8} textAnchor="middle" fontSize="10" fill="var(--adm-muted)">{formatX(t)}</text>
-      ))}
+      {xTicks.map((t) => {
+        const nearest = fromData ? allPoints.reduce((a, b) => (Math.abs(b.x - t) < Math.abs(a.x - t) ? b : a), allPoints[0]) : null;
+        return (
+          <text key={t} x={sx(t)} y={h - 8} textAnchor="middle" fontSize="10" fill="var(--adm-muted)">
+            {fromData && nearest?.label ? nearest.label : formatX(t)}
+          </text>
+        );
+      })}
       {series.map((s, si) => {
         const color = s.color || PALETTE[si % PALETTE.length];
         const path = s.points.map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.x)},${sy(p.y)}`).join(" ");
@@ -67,9 +87,10 @@ export function LineChart({ series = [], height = 220, yLabel = "", formatX = (v
           />
           {series.map((s, si) => {
             const point = s.points.find((p) => p.x === hover.x);
+            const name = s.name || (point && point.label) || "";
             return (
-              <text key={s.name} x={Math.min(w - 144, Math.max(pad.l + 6, sx(hover.x) - 64))} y={pad.t + 16 + si * 20} fontSize="11" fill="var(--adm-text)">
-                {`${s.name}: ${point ? point.y : 0}${yLabel}`}
+              <text key={s.name + si} x={Math.min(w - 144, Math.max(pad.l + 6, sx(hover.x) - 64))} y={pad.t + 16 + si * 20} fontSize="11" fill="var(--adm-text)">
+                {`${name ? `${name}: ` : ""}${point ? point.y : 0}${yLabel}`}
               </text>
             );
           })}
@@ -79,11 +100,12 @@ export function LineChart({ series = [], height = 220, yLabel = "", formatX = (v
   );
 }
 
-export function DonutChart({ data = [], size = 180, thickness = 26, centerLabel }) {
+export function DonutChart({ data = [], size = 180, thickness = 26, centerLabel, centerSub, colors }) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
   const r = (size - thickness) / 2;
   const c = 2 * Math.PI * r;
   let offset = 0;
+  const colorFor = (d, i) => d.color || (colors && colors[String(d.label).toLowerCase()]) || PALETTE[i % PALETTE.length];
   if (!total) {
     return (
       <div className="flex items-center justify-center" style={{ width: size, height: size }}>
@@ -100,7 +122,7 @@ export function DonutChart({ data = [], size = 180, thickness = 26, centerLabel 
             <circle
               key={d.label}
               cx={size / 2} cy={size / 2} r={r} fill="none"
-              stroke={d.color || PALETTE[i % PALETTE.length]}
+              stroke={colorFor(d, i)}
               strokeWidth={thickness}
               strokeDasharray={`${c * frac} ${c * (1 - frac)}`}
               strokeDashoffset={-c * offset}
@@ -112,10 +134,10 @@ export function DonutChart({ data = [], size = 180, thickness = 26, centerLabel 
           return seg;
         })}
       </svg>
-      {(centerLabel || total != null) && (
-        <div className="absolute flex flex-col items-center">
+      {(centerLabel || centerSub || total != null) && (
+        <div className="absolute flex flex-col items-center pointer-events-none">
           <span className="text-xl font-bold adm-text tabular-nums">{centerLabel ?? total}</span>
-          {centerLabel && <span className="text-[10px] adm-muted uppercase tracking-wide">total</span>}
+          {centerSub && <span className="text-[10px] adm-muted uppercase tracking-wide">{centerSub}</span>}
         </div>
       )}
     </div>

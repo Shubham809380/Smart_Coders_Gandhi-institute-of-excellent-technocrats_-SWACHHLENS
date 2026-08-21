@@ -1,176 +1,210 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import AdminSidebar from '../../components/AdminSidebar.jsx';
-import { adminService } from '../../services.js';
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import AdminLayout from "../../components/admin/AdminLayout.jsx";
+import { Chip, StatusChip, Icon, Skeleton, ErrorState, relativeTime, wasteTypeLabel } from "../../components/admin/ui.jsx";
+import { adminService } from "../../services.js";
+import { useLive } from "../../hooks/useLive.js";
+
+const QUICK_LINKS = [
+  { to: "/admin/map", icon: "map", label: "Live Map", desc: "Hotspots & field units" },
+  { to: "/admin/queue", icon: "list", label: "Priority Queue", desc: "Dispatch & bulk assign" },
+  { to: "/admin/verification", icon: "eye", label: "Verification", desc: "Cleanup proof review" },
+  { to: "/admin/duplicates", icon: "copy", label: "Duplicates", desc: "AI-flagged merge review" },
+  { to: "/admin/recycling", icon: "recycle", label: "Recycling", desc: "Route heavy recyclables" },
+  { to: "/admin/teams", icon: "users", label: "Teams & Fleet", desc: "Crews, vehicles, loads" },
+];
+
+function fmtMins(m) {
+  if (!m) return "—";
+  if (m < 60) return `${m}m`;
+  const h = Math.round((m / 60) * 10) / 10;
+  return h < 48 ? `${h}h` : `${Math.round((h / 24) * 10) / 10}d`;
+}
 
 export default function AdminDashboard() {
-  const navigate = useNavigate();
-  const [dashboard, setDashboard] = useState(null);
+  const [kpiData, setKpiData] = useState(null);
+  const [topReports, setTopReports] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
 
-  useEffect(() => { fetchDashboard(); }, []);
+  const load = useCallback(async () => {
+    try {
+      setError("");
+      const [analytics, reports, teamList, alertList] = await Promise.all([
+        adminService.getAnalytics(),
+        adminService.getComplaints({ sort: "priority", limit: 6 }),
+        adminService.getTeamsWithLoad(),
+        adminService.getAlerts(6),
+      ]);
+      setKpiData(analytics);
+      setTopReports(reports.reports || []);
+      setTeams(teamList || []);
+      setAlerts(alertList || []);
+    } catch (err) {
+      setError(err.message || "Failed to load dashboard.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const fetchDashboard = async () => {
-    try { const data = await adminService.getDashboard(); setDashboard(data); setError(null); }
-    catch (err) { console.error("Dashboard fetch failed:", err); setError("Failed to load dashboard data"); }
-    setLoading(false);
-  };
+  useEffect(() => { load(); }, [load]);
 
-  const d = dashboard || {};
-  const urgent = (d.aiPriorityQueue || []).filter(r => r.severity === 'critical' || r.severity === 'high');
+  useLive(() => load(), ["waste:new", "waste:updated", "waste:status:update", "team:update"], { pollMs: 45000, poll: load });
 
   if (loading) {
     return (
-      <div className="flex min-h-screen bg-background items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-[13px] text-on-surface-variant font-medium">Loading dashboard...</span>
+      <AdminLayout>
+        <div className="space-y-4">
+          <Skeleton h={36} w={260} />
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="adm-card"><Skeleton h={72} /></div>)}</div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="adm-card"><Skeleton h={280} /></div>)}</div>
         </div>
-      </div>
+      </AdminLayout>
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex min-h-screen bg-background">
-        <AdminSidebar />
-        <main className="ml-0 lg:ml-72 flex-1 pl-16 lg:pl-0 p-4 lg:p-8">
-          <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-            <span className="material-symbols-outlined text-[48px] text-on-surface-variant/30">error</span>
-            <p className="text-[15px] font-bold text-on-surface-variant">{error}</p>
-            <button onClick={fetchDashboard} className="px-5 py-2.5 bg-primary text-white rounded-xl text-[13px] font-bold hover:opacity-90 transition-opacity">Retry</button>
-          </div>
-        </main>
-      </div>
-    );
+  if (error && !kpiData) {
+    return <AdminLayout><div className="adm-card max-w-xl mx-auto"><ErrorState message={error} onRetry={load} /></div></AdminLayout>;
   }
+
+  const k = kpiData?.kpis || {};
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AdminSidebar />
-      <main className="ml-0 lg:ml-72 flex-1 pl-16 lg:pl-0 p-4 lg:p-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-[28px] font-extrabold text-on-surface tracking-tight">Operations Command Center</h1>
-            <p className="text-[15px] text-on-surface-variant max-w-2xl">Real-time overview of municipal waste management operations.</p>
-          </div>
-          <div className="flex items-center gap-2 px-3.5 py-2 bg-surface rounded-xl border border-black/[0.04]">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-[11px] font-extrabold text-on-surface-variant uppercase tracking-widest">Live Sync Active</span>
-          </div>
+    <AdminLayout>
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-xl font-extrabold tracking-tight">Operations Command Center</h2>
+          <p className="text-sm adm-muted mt-0.5">Real-time overview of municipal waste operations.</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-          <div className="lg:col-span-8 flex flex-col gap-8">
-            {/* KPI Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="col-span-2 bg-surface rounded-3xl p-5 flex flex-col justify-between relative overflow-hidden border border-black/[0.03] shadow-sm">
-                <div className="absolute -right-8 -bottom-8 w-28 h-28 bg-primary/[0.04] rounded-full blur-2xl" />
-                <div className="flex items-center gap-3 mb-4 relative z-10">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-primary text-[20px]">report_problem</span>
-                  </div>
-                  <span className="text-[13px] font-bold text-on-surface-variant">Open Complaints</span>
-                </div>
-                <span className="text-[36px] font-extrabold text-on-surface leading-none relative z-10">{d.openComplaints || 0}</span>
-              </div>
-              <div className="bg-red-50 border border-red-200 rounded-3xl p-4 flex flex-col justify-between relative overflow-hidden">
-                <div className="relative z-10">
-                  <span className="text-[28px] font-extrabold text-red-600 block leading-none mb-1">{d.criticalComplaints || 0}</span>
-                  <span className="text-[11px] font-bold text-red-500 uppercase tracking-wider">Critical</span>
-                </div>
-              </div>
-              <div className="bg-[#57dffe]/15 border border-[#57dffe]/30 rounded-3xl p-4 flex flex-col justify-between relative overflow-hidden">
-                <div className="relative z-10">
-                  <span className="text-[28px] font-extrabold text-[#00687a] block leading-none mb-1">{d.resolvedToday || 0}</span>
-                  <span className="text-[11px] font-bold text-[#00687a]/70 uppercase tracking-wider">Resolved Today</span>
-                </div>
-              </div>
-              <div className="bg-surface rounded-3xl p-4 flex flex-col justify-between relative overflow-hidden border border-black/[0.03]">
-                <div className="relative z-10">
-                  <span className="text-[28px] font-extrabold text-on-surface block leading-none mb-1">{d.availableTeams || 0}</span>
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Teams Available</span>
-                </div>
-              </div>
-              <div className="bg-surface rounded-3xl p-4 flex flex-col justify-between relative overflow-hidden border border-black/[0.03]">
-                <div className="relative z-10">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-[28px] font-extrabold text-on-surface leading-none mb-1">{d.averageResolutionTime >= 60 ? `${Math.round(d.averageResolutionTime / 60)}` : d.averageResolutionTime || 0}</span>
-                    <span className="text-[14px] font-bold text-on-surface-variant">{d.averageResolutionTime >= 60 ? 'hrs' : 'min'}</span>
-                  </div>
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Avg Resolution</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Urgent Section */}
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-[17px] font-extrabold text-on-surface flex items-center gap-2">
-                  <span className="material-symbols-outlined text-red-500 text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>emergency</span>
-                  Requires Immediate Attention
-                </h2>
-                <button onClick={() => navigate('/admin/ai-priority-queue')} className="text-[13px] font-bold text-primary hover:text-primary-container transition-colors">View All</button>
-              </div>
-
-              <div className="flex flex-col gap-2.5">
-                {urgent.length === 0 && (
-                  <div className="bg-surface rounded-2xl p-6 text-center text-on-surface-variant border border-dashed border-outline-variant/60">No urgent complaints</div>
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          {[
+            { label: "Open complaints", value: k.openComplaints?.value ?? "—", trend: k.openComplaints?.trend, good: "down" },
+            { label: "Avg resolution", value: fmtMins(k.avgResolutionMinutes?.value), trend: k.avgResolutionMinutes?.trend, good: "down" },
+            { label: "Escalations (7d)", value: k.escalatedCount?.value ?? "—", trend: k.escalatedCount?.trend, good: "down" },
+            { label: "Resolved today", value: k.resolvedToday?.value ?? "—", trend: k.resolvedToday?.trend, good: "up" },
+          ].map((c) => (
+            <div key={c.label} className="adm-card p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest adm-muted">{c.label}</p>
+              <div className="flex items-end justify-between gap-2 mt-1.5">
+                <p className="text-2xl font-extrabold tabular-nums leading-none">{c.value}</p>
+                {c.trend?.direction !== "flat" && c.trend?.direction && (
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-bold" style={{ color: c.trend.direction === c.good ? "var(--adm-ok)" : "var(--adm-danger)" }}>
+                    <Icon name={c.trend.direction === "up" ? "trendUp" : "trendDown"} size={12} />
+                    {c.trend.percent != null ? `${c.trend.percent}%` : ""}
+                  </span>
                 )}
-                {urgent.slice(0, 3).map((report) => (
-                  <div key={report.id} className="bg-surface rounded-2xl p-3.5 flex items-center gap-3.5 hover:shadow-md transition-all cursor-pointer group border border-black/[0.03] shadow-sm" onClick={() => navigate('/admin/smart-dispatch', { state: { reportId: report.id } })}>
-                    <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 relative bg-surface-container flex items-center justify-center border border-black/[0.04]">
-                      {report.image ? <div className="bg-cover bg-center w-full h-full" style={{ backgroundImage: `url('${report.image}')` }} /> : <span className="material-symbols-outlined text-on-surface-variant text-[22px]">photo</span>}
-                    </div>
-                    <div className="flex-1 min-w-0 flex flex-col justify-center">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase ${report.severity === 'critical' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>{report.severity}</span>
-                        <span className="text-[11px] font-medium text-on-surface-variant truncate">ID: {report.id}</span>
-                      </div>
-                      <h3 className="text-[15px] font-bold text-on-surface truncate">{report.wasteType?.replace(/_/g, ' ')}</h3>
-                      <p className="text-[12px] text-on-surface-variant truncate flex items-center gap-1 mt-0.5">
-                        <span className="material-symbols-outlined text-[13px]">location_on</span>{report.address}
-                      </p>
-                    </div>
-                    <div className="w-9 h-9 rounded-xl bg-surface flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm shrink-0">
-                      <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
-          </div>
+          ))}
+        </div>
 
-          {/* AI Priority Queue Sidebar */}
-          <div className="lg:col-span-4 flex flex-col h-full min-h-[300px] lg:min-h-[600px]">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[17px] font-extrabold text-on-surface flex items-center gap-2">
-                <span className="material-symbols-outlined text-cyan-600 text-[20px]">explore</span> AI Priority Queue
-              </h2>
-              <button onClick={() => navigate('/admin/ai-priority-queue')} className="text-[13px] font-bold text-primary">View All</button>
+        {/* Quick links */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {QUICK_LINKS.map((q) => (
+            <Link key={q.to} to={q.to} className="adm-card p-3.5 flex flex-col gap-1.5 hover:-translate-y-0.5 transition-transform" style={{ textDecoration: "none" }}>
+              <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(0,168,150,0.12)", color: "var(--adm-primary)" }}>
+                <Icon name={q.icon} size={15} />
+              </span>
+              <p className="text-[13px] font-extrabold adm-text">{q.label}</p>
+              <p className="text-[11px] adm-muted leading-tight">{q.desc}</p>
+            </Link>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {/* Top priorities */}
+          <section className="adm-card p-4 lg:col-span-2">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-extrabold">Top priorities</h3>
+              <Link to="/admin/queue" className="text-xs font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>View full queue →</Link>
             </div>
-            <div className="flex-1 w-full bg-surface rounded-3xl overflow-hidden border border-black/[0.03] shadow-sm p-4 flex flex-col gap-2.5">
-              {(d.aiPriorityQueue || []).slice(0, 5).map((item) => (
-                <div key={item.id} className="bg-surface-container-low rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-surface-container transition-colors border border-black/[0.02]" onClick={() => navigate('/admin/smart-dispatch', { state: { reportId: item.id } })}>
-                  <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 bg-surface-container-high flex items-center justify-center border border-black/[0.04]">
-                    {item.image ? <div className="bg-cover bg-center w-full h-full" style={{ backgroundImage: `url('${item.image}')` }} /> : <span className="material-symbols-outlined text-on-surface-variant text-[18px]">photo</span>}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[13px] font-bold text-on-surface truncate block">{item.wasteType?.replace(/_/g, ' ')}</span>
-                    <span className="text-[11px] text-on-surface-variant truncate block mt-0.5">{item.address}</span>
-                  </div>
-                  <span className={`text-[14px] font-extrabold ${item.priorityScore >= 90 ? 'text-red-500' : item.priorityScore >= 75 ? 'text-amber-500' : 'text-primary'}`}>{item.priorityScore}</span>
-                </div>
-              ))}
-              {(!d.aiPriorityQueue || d.aiPriorityQueue.length === 0) && (
-                <div className="flex-1 flex items-center justify-center text-on-surface-variant text-[13px]">No pending reports</div>
+            {topReports.length === 0 ? (
+              <p className="text-sm adm-muted py-6 text-center">No open complaints.</p>
+            ) : (
+              <ul className="divide-y adm-divide">
+                {topReports.map((r) => (
+                  <li key={r.id}>
+                    <Link to={`/admin/complaints/${r.id}`} className="flex items-center gap-3 py-2.5 group" style={{ textDecoration: "none" }}>
+                      <img src={r.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" loading="lazy" style={{ background: "var(--adm-surface-2)" }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[13px] font-bold group-hover:underline" style={{ color: "var(--adm-primary)" }}>{r.id}</span>
+                          <StatusChip status={r.status} />
+                          {r.hazardFlag && <Chip tone="danger">Hazard</Chip>}
+                        </div>
+                        <p className="text-xs adm-muted truncate">{wasteTypeLabel(r.wasteType)} · {r.address || "Unknown location"}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <PriorityBadge score={r.effectivePriority ?? r.priorityScore} />
+                        <p className="text-[10px] adm-muted mt-0.5">{relativeTime(r.createdAt)}</p>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <div className="space-y-3">
+            {/* Alerts */}
+            <section className="adm-card p-4">
+              <div className="flex items-center justify-between mb-2.5">
+                <h3 className="text-sm font-extrabold">Recent alerts</h3>
+                <Link to="/admin/alerts" className="text-xs font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>All →</Link>
+              </div>
+              {alerts.length === 0 ? (
+                <p className="text-xs adm-muted py-3 text-center">No active alerts.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {alerts.slice(0, 5).map((a, i) => (
+                    <li key={`${a.reportId}-${i}`} className="flex items-start gap-2 text-xs">
+                      <span className="mt-0.5 shrink-0 w-5 h-5 rounded-md flex items-center justify-center"
+                        style={{ background: a.kind === "hazard" ? "rgba(220,38,38,0.12)" : a.kind === "critical" ? "rgba(245,158,11,0.14)" : "rgba(59,130,246,0.12)", color: a.kind === "hazard" ? "var(--adm-danger)" : a.kind === "critical" ? "var(--adm-warn)" : "var(--adm-info)" }}>
+                        <Icon name={a.kind === "hazard" ? "alert" : a.kind === "critical" ? "flame" : "trendUp"} size={11} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{a.title}</p>
+                        <p className="adm-muted truncate">{a.body}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </div>
+            </section>
+
+            {/* Team load */}
+            <section className="adm-card p-4">
+              <div className="flex items-center justify-between mb-2.5">
+                <h3 className="text-sm font-extrabold">Team load</h3>
+                <Link to="/admin/teams" className="text-xs font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>Manage →</Link>
+              </div>
+              {teams.length === 0 ? (
+                <p className="text-xs adm-muted py-3 text-center">No teams configured.</p>
+              ) : (
+                <ul className="space-y-2.5">
+                  {teams.map((t) => (
+                    <li key={t.id} className="flex items-center gap-2 text-xs">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: t.availability === "available" ? "var(--adm-ok)" : t.availability === "off_duty" ? "var(--adm-muted)" : "var(--adm-info)" }} />
+                      <span className="font-semibold truncate flex-1">{t.name}</span>
+                      <span className="tabular-nums adm-muted">{t.activeTasks ?? 0} open</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AdminLayout>
   );
+}
+
+function PriorityBadge({ score }) {
+  const s = Number(score) || 0;
+  const tone = s >= 80 ? "danger" : s >= 60 ? "warn" : s >= 40 ? "info" : "neutral";
+  return <Chip tone={tone}>{s}</Chip>;
 }
