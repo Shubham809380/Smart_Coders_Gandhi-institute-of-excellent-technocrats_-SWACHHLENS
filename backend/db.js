@@ -157,5 +157,20 @@ export async function initDatabase() {
     await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS rejection_reason TEXT DEFAULT ''");
     await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS worker_notes TEXT DEFAULT ''");
     await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS actual_volume TEXT DEFAULT ''");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS ai_hazard_flag BOOLEAN DEFAULT false");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS ai_recyclable_heavy BOOLEAN DEFAULT false");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS ai_detection_summary JSONB");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS escalated BOOLEAN DEFAULT false");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMPTZ");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS recycling_status TEXT DEFAULT ''");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS recycling_partner TEXT DEFAULT ''");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS recycling_routed_at TIMESTAMPTZ");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS duplicate_group_dismissed BOOLEAN DEFAULT false");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS ai_after_analysis JSONB");
+    await db.query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'info'");
+    await db.query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS report_id TEXT DEFAULT ''");
+    await db.query("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status)");
+    await db.query("CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at)");
+    await db.query("CREATE INDEX IF NOT EXISTS idx_reports_priority ON reports(priority_score DESC)");
   } catch {}
 }

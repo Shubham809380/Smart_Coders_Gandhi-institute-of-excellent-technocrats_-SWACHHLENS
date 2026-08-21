@@ -602,9 +602,258 @@ export async function handleApiRequest(req, res) {
         search: url.searchParams.get("search") || undefined,
         dateFrom: url.searchParams.get("dateFrom") || undefined,
         dateTo: url.searchParams.get("dateTo") || undefined,
+        escalated: url.searchParams.get("escalated") || undefined,
+        hazard: url.searchParams.get("hazard") || undefined,
+        recyclable: url.searchParams.get("recyclable") || undefined,
+        minPriority: url.searchParams.get("minPriority") || undefined,
+        sort: url.searchParams.get("sort") || undefined,
       };
       const reports = await store.getComplaints(filters);
       return json(res, 200, { reports: reports.map(formatReportForClient), total: reports.length });
+    }
+
+    const complaintIdMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)$/);
+    if (complaintIdMatch && req.method === "GET") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const report = await store.getReportById(decodeURIComponent(complaintIdMatch[1]));
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
+      return json(res, 200, { report: formatReportForClient(report) });
+    }
+
+    if (complaintIdMatch && req.method === "PATCH") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const reportId = decodeURIComponent(complaintIdMatch[1]);
+      const body = await readJson(req);
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
+      const updates = {};
+      if (body.status && validateStatusTransition(report.status, body.status)) {
+        updates.status = body.status;
+        updates.statusTimeline = [...(report.statusTimeline || []), { status: body.status, at: nowIso() }];
+      }
+      if (body.adminNotes !== undefined) updates.workerNotes = String(body.adminNotes);
+      if (!Object.keys(updates).length) return json(res, 400, { error: { code: "VALIDATION", message: "No valid fields to update." } });
+      const updated = await store.updateReport(reportId, updates);
+      if (io) io.emit("waste:updated", formatReportForClient(updated));
+      return json(res, 200, { report: formatReportForClient(updated) });
+    }
+
+    const assignMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/assign$/);
+    if (assignMatch && req.method === "PATCH") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const reportId = decodeURIComponent(assignMatch[1]);
+      const body = await readJson(req);
+      const teamId = String(body.teamId || "");
+      const team = await store.getTeamById(teamId);
+      if (!team) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
+      await store.assignTeam(reportId, teamId);
+      const report = await store.getReportById(reportId);
+      await store.createNotification({ userId: report.citizenId, title: "Cleanup team assigned", body: `${team.name} is now assigned to ${reportId}.`, kind: "assignment", reportId });
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `assigned_${teamId}_to_${reportId}` });
+      if (io) {
+        io.emit("waste:updated", formatReportForClient(report));
+        io.emit("team:update", formatTeamForClient(await store.getTeamById(teamId)));
+      }
+      return json(res, 200, { report: formatReportForClient(report), team: formatTeamForClient(team) });
+    }
+
+    const escalateMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/escalate$/);
+    if (escalateMatch && req.method === "PATCH") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const reportId = decodeURIComponent(escalateMatch[1]);
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
+      const updated = await store.updateReport(reportId, {
+        escalated: true,
+        escalatedAt: nowIso(),
+        statusTimeline: [...(report.statusTimeline || []), { status: "escalated", at: nowIso() }],
+      });
+      await store.createNotification({ userId: report.citizenId, title: "Complaint escalated", body: `${reportId} has been escalated for priority action.`, kind: "escalation", reportId });
+      await store.createNotification({ userId: "user-admin", title: "Complaint escalated", body: `${auth.user.name} escalated ${reportId}.`, kind: "escalation", reportId });
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `escalated_${reportId}` });
+      if (io) {
+        io.emit("waste:updated", formatReportForClient(updated));
+        io.emit("complaint:escalated", formatReportForClient(updated));
+      }
+      return json(res, 200, { report: formatReportForClient(updated) });
+    }
+
+    const markDupMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/duplicate$/);
+    if (markDupMatch && req.method === "PATCH") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const reportId = decodeURIComponent(markDupMatch[1]);
+      const body = await readJson(req);
+      const primaryReportId = String(body.primaryReportId || "");
+      if (primaryReportId === reportId) return json(res, 400, { error: { code: "VALIDATION", message: "A complaint cannot be a duplicate of itself." } });
+      const primary = await store.getReportById(primaryReportId);
+      if (!primary) return json(res, 404, { error: { code: "NOT_FOUND", message: "Primary complaint not found." } });
+      const { report } = await store.markAsDuplicate(reportId, primaryReportId);
+      await store.createNotification({ userId: report.citizenId, title: "Merged with existing complaint", body: `${reportId} was merged into ${primaryReportId}. You will get updates on the original complaint.`, kind: "duplicate", reportId: primaryReportId });
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `marked_${reportId}_duplicate_of_${primaryReportId}` });
+      if (io) {
+        io.emit("waste:updated", formatReportForClient(report));
+        io.emit("waste:updated", formatReportForClient(await store.getReportById(primaryReportId)));
+      }
+      return json(res, 200, { ok: true, report: formatReportForClient(report) });
+    }
+
+    const recycleMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/recycle$/);
+    if (recycleMatch && req.method === "PATCH") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const reportId = decodeURIComponent(recycleMatch[1]);
+      const body = await readJson(req);
+      const partner = String(body.partner || "").trim();
+      if (!partner) return json(res, 400, { error: { code: "VALIDATION", message: "Recycling partner is required." } });
+      const updated = await store.routeToRecycler(reportId, partner);
+      if (!updated) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `routed_${reportId}_to_recycler_${partner}` });
+      if (io) io.emit("waste:updated", formatReportForClient(updated));
+      return json(res, 200, { report: formatReportForClient(updated) });
+    }
+
+    const verifyAiMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/verify-ai$/);
+    if (verifyAiMatch && req.method === "POST") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const reportId = decodeURIComponent(verifyAiMatch[1]);
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
+      if (report.aiAfterAnalysis) return json(res, 200, { analysis: report.aiAfterAnalysis, cached: true });
+      if (!report.afterMedia?.imageUrl) {
+        return json(res, 400, { error: { code: "NO_AFTER_PHOTO", message: "No after-cleanup photo submitted yet for this complaint." } });
+      }
+      try {
+        const imgRes = await fetch(report.afterMedia.imageUrl);
+        if (!imgRes.ok) throw new Error(`image fetch failed (${imgRes.status})`);
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        const mime = imgRes.headers.get("content-type") || "image/jpeg";
+        const analysis = await aiProvider.analyzeWaste({ image: `data:${mime};base64,${buf.toString("base64")}` });
+        await store.updateReport(reportId, { aiAfterAnalysis: analysis });
+        return json(res, 200, { analysis, cached: false });
+      } catch (err) {
+        console.warn("[AI] After-photo verification failed:", err.message);
+        return json(res, 502, { error: { code: "AI_FAILED", message: "After-photo analysis is unavailable right now. Please try again later." } });
+      }
+    }
+
+    if (pathname === "/api/admin/bulk-assign" && req.method === "POST") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const body = await readJson(req);
+      const teamId = String(body.teamId || "");
+      const reportIds = Array.isArray(body.reportIds) ? body.reportIds.filter(Boolean) : [];
+      const team = await store.getTeamById(teamId);
+      if (!team) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
+      if (!reportIds.length) return json(res, 400, { error: { code: "VALIDATION", message: "Select at least one complaint to assign." } });
+      const assigned = [];
+      for (const reportId of reportIds) {
+        try {
+          await store.assignTeam(reportId, teamId);
+          const report = await store.getReportById(reportId);
+          assigned.push(formatReportForClient(report));
+          await store.createNotification({ userId: report.citizenId, title: "Cleanup team assigned", body: `${team.name} is now assigned to ${reportId}.`, kind: "assignment", reportId });
+        } catch (err) {
+          console.warn(`[bulk-assign] Failed for ${reportId}:`, err.message);
+        }
+      }
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `bulk_assigned_${assigned.length}_reports_to_${teamId}` });
+      if (io) {
+        for (const r of assigned) io.emit("waste:updated", r);
+        io.emit("team:update", formatTeamForClient(await store.getTeamById(teamId)));
+      }
+      return json(res, 200, { assignedCount: assigned.length, reports: assigned, team: formatTeamForClient(team) });
+    }
+
+    if (pathname === "/api/admin/hotspots" && req.method === "GET") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const cells = await store.getHotspotCells();
+      return json(res, 200, { cells });
+    }
+
+    if (pathname === "/api/admin/alerts" && req.method === "GET") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const alerts = await store.getAdminAlerts();
+      return json(res, 200, { alerts });
+    }
+
+    if (pathname === "/api/admin/teams" && req.method === "GET") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const teams = await store.getTeamsWithLoad();
+      return json(res, 200, { teams: teams.map((t) => ({ ...formatTeamForClient(t), activeTasks: t.activeTasks, completedTasks: t.completedTasks })) });
+    }
+
+    if (pathname === "/api/admin/teams" && req.method === "POST") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const body = await readJson(req);
+      const name = String(body.name || "").trim();
+      if (!name) return json(res, 400, { error: { code: "VALIDATION", message: "Team name is required." } });
+      const team = await store.createTeam({
+        name,
+        leaderId: body.leaderId || "",
+        memberIds: Array.isArray(body.memberIds) ? body.memberIds : [],
+        wardIds: Array.isArray(body.wardIds) ? body.wardIds : [],
+        vehicleType: body.vehicleType || "",
+        vehicleCapacity: body.vehicleCapacity || "",
+        status: ["available", "assigned", "en_route", "off_duty"].includes(body.status) ? body.status : "available",
+      });
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `created_team_${team.id}` });
+      if (io) io.emit("team:update", formatTeamForClient(team));
+      return json(res, 201, { team: formatTeamForClient(team) });
+    }
+
+    const adminTeamMatch = pathname.match(/^\/api\/admin\/teams\/([^/]+)$/);
+    if (adminTeamMatch && req.method === "PATCH") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const teamId = decodeURIComponent(adminTeamMatch[1]);
+      const body = await readJson(req);
+      const updates = {};
+      if (body.name !== undefined) updates.name = String(body.name).trim();
+      if (body.leaderId !== undefined) updates.leaderId = body.leaderId;
+      if (Array.isArray(body.memberIds)) updates.memberIds = body.memberIds;
+      if (Array.isArray(body.wardIds)) updates.wardIds = body.wardIds;
+      if (body.vehicleType !== undefined) updates.vehicleType = body.vehicleType;
+      if (body.vehicleCapacity !== undefined) updates.vehicleCapacity = body.vehicleCapacity;
+      if (body.status && ["available", "assigned", "en_route", "off_duty"].includes(body.status)) updates.status = body.status;
+      if (!Object.keys(updates).length) return json(res, 400, { error: { code: "VALIDATION", message: "No valid fields to update." } });
+      const team = await store.updateTeam(teamId, updates);
+      if (!team) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `updated_team_${teamId}` });
+      if (io) io.emit("team:update", formatTeamForClient(team));
+      return json(res, 200, { team: formatTeamForClient(team) });
+    }
+
+    if (adminTeamMatch && req.method === "DELETE") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const teamId = decodeURIComponent(adminTeamMatch[1]);
+      const existing = await store.getTeamById(teamId);
+      if (!existing) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
+      await store.deleteTeam(teamId);
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `deleted_team_${teamId}` });
+      if (io) io.emit("team:deleted", { teamId });
+      return json(res, 200, { ok: true });
+    }
+
+    if (pathname === "/api/admin/duplicates/dismiss" && req.method === "POST") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const body = await readJson(req);
+      const groupId = String(body.groupId || "");
+      if (!groupId) return json(res, 400, { error: { code: "VALIDATION", message: "Duplicate group id is required." } });
+      const result = await store.dismissDuplicateGroup(groupId);
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `dismissed_duplicate_group_${groupId}` });
+      return json(res, 200, result);
     }
 
     if (pathname === "/api/admin/users" && req.method === "GET") {
@@ -646,6 +895,13 @@ export async function handleApiRequest(req, res) {
       if (!auth) return;
       const body = await readJson(req);
       const result = await store.mergeDuplicates(body.groupId, body.keepId);
+      const kept = await store.getReportById(body.keepId);
+      const mergedReports = await store.getComplaints({ status: "duplicate" });
+      for (const r of mergedReports.filter((r) => r.duplicate?.primaryReportId === body.keepId)) {
+        await store.createNotification({ userId: r.citizenId, title: "Merged with existing complaint", body: `${r.id} was confirmed as a duplicate of ${body.keepId}.`, kind: "duplicate", reportId: body.keepId });
+        if (io) io.emit("waste:updated", formatReportForClient(r));
+      }
+      if (io) io.emit("waste:updated", formatReportForClient(kept));
       return json(res, 200, result);
     }
 

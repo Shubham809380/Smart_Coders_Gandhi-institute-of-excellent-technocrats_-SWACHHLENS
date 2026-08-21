@@ -90,7 +90,7 @@ export function calculatePriority(analysis, context = {}) {
     score += PRIORITY_WEIGHTS.schoolNearby;
     reasons.push("School nearby");
   }
-  if (analysis.potentialRisks.some((risk) => /road|pedestrian|obstruction/i.test(risk))) {
+  if ((analysis.potentialRisks || []).some((risk) => /road|pedestrian|obstruction/i.test(risk))) {
     score += PRIORITY_WEIGHTS.roadObstruction;
     reasons.push("Road or pedestrian obstruction");
   }
@@ -104,6 +104,62 @@ export function calculatePriority(analysis, context = {}) {
   }
   const clamped = Math.max(0, Math.min(100, score));
   return { score: clamped, level: priorityLevel(clamped), reasons: [...new Set(reasons)] };
+}
+
+function ageBonusHours(ageHours) {
+  if (ageHours < 24) return 0;
+  return Math.min(14, PRIORITY_WEIGHTS.ageOver24Hours + Math.max(0, Math.floor(ageHours / 24) - 1) * 2);
+}
+
+// Recomputes the full priority breakdown from persisted AI/state data plus the
+// live age of the complaint, so every factor in the score stays auditable.
+export function computePriorityBreakdown(report) {
+  const analysis = report.aiAnalysis || {};
+  const address = String(report.location?.address || "").toLowerCase();
+  const ageHours = Math.max(0, (Date.now() - new Date(report.createdAt).getTime()) / 3600000);
+  const duplicateSupport = (report.duplicate?.isPotentialDuplicate ? 1 : 0) + (report.duplicateSupportCount || 0);
+
+  const volumePoints = PRIORITY_WEIGHTS.volume[analysis.estimatedVolume] || 0;
+  const severityPoints = PRIORITY_WEIGHTS.severity[analysis.severity] || 0;
+  const hazardActive = ["hazardous_waste", "e_waste"].includes(analysis.wasteType) || analysis.wasteType === "drain_blockage";
+  const hazardPoints = hazardActive ? (analysis.wasteType === "drain_blockage" ? PRIORITY_WEIGHTS.drainBlockage : PRIORITY_WEIGHTS.hazardousWaste) : 0;
+  const hospitalNearby = address.includes("hospital");
+  const schoolNearby = address.includes("school");
+  const sensitivityPoints = (hospitalNearby ? PRIORITY_WEIGHTS.hospitalNearby : 0) + (schoolNearby ? PRIORITY_WEIGHTS.schoolNearby : 0);
+  const roadObstruction = (analysis.potentialRisks || []).some((risk) => /road|pedestrian|obstruction/i.test(risk));
+  const roadPoints = roadObstruction ? PRIORITY_WEIGHTS.roadObstruction : 0;
+  const frequencyPoints = duplicateSupport > 0 ? PRIORITY_WEIGHTS.duplicateSupport : 0;
+  const agePoints = ageBonusHours(ageHours);
+
+  const base = volumePoints + severityPoints + hazardPoints + sensitivityPoints + roadPoints + frequencyPoints;
+  const escalationBonus = report.escalated ? 10 : 0;
+  const score = Math.max(0, Math.min(100, base + agePoints + escalationBonus));
+
+  return {
+    score,
+    level: priorityLevel(score),
+    ageHours: Number(ageHours.toFixed(1)),
+    components: [
+      { key: "volume", label: `Volume (${analysis.estimatedVolume || "unknown"})`, points: volumePoints },
+      { key: "severity", label: `AI severity (${analysis.severity || "unknown"})`, points: severityPoints },
+      { key: "hazard", label: analysis.wasteType === "drain_blockage" ? "Drain blockage risk" : "Hazardous waste", points: hazardPoints },
+      { key: "sensitivity", label: [hospitalNearby && "Hospital nearby", schoolNearby && "School nearby"].filter(Boolean).join(" · ") || "Location sensitivity", points: sensitivityPoints, active: sensitivityPoints > 0 },
+      { key: "road", label: "Road / pedestrian obstruction", points: roadPoints, active: roadObstruction },
+      { key: "frequency", label: `Reported ${duplicateSupport > 1 ? `${duplicateSupport} times nearby` : duplicateSupport === 1 ? "twice nearby" : "once"}`, points: frequencyPoints, active: frequencyPoints > 0 },
+      { key: "age", label: `Open for ${ageHours < 24 ? `${Math.round(ageHours)}h` : `${Math.floor(ageHours / 24)}d ${Math.round(ageHours % 24)}h`}`, points: agePoints, active: agePoints > 0 },
+      ...(escalationBonus ? [{ key: "escalation", label: "Manually escalated", points: escalationBonus, active: true }] : []),
+    ],
+  };
+}
+
+// Priority used for sorting/queues: stored score refreshed with live age/escalation.
+export function withEffectivePriority(report) {
+  const breakdown = computePriorityBreakdown(report);
+  return {
+    ...report,
+    priority: { ...report.priority, score: breakdown.score, level: breakdown.level },
+    priorityBreakdown: breakdown,
+  };
 }
 
 export function validateStatusTransition(currentStatus, nextStatus) {
@@ -125,6 +181,7 @@ export function validateStatusTransition(currentStatus, nextStatus) {
 }
 
 export function formatReportForClient(report) {
+  const breakdown = computePriorityBreakdown(report);
   return {
     id: report.id,
     userId: report.citizenId,
@@ -134,16 +191,24 @@ export function formatReportForClient(report) {
     latitude: report.location?.latitude,
     longitude: report.location?.longitude,
     address: report.location?.address || "",
+    wardId: report.location?.wardId || "",
+    locality: report.location?.locality || "",
     timestamp: report.createdAt,
     wasteType: report.aiAnalysis?.wasteType || "other",
     aiConfidence: report.aiAnalysis?.confidence || 0,
     estimatedVolume: report.aiAnalysis?.estimatedVolume || "small",
     estimatedVolumeRange: report.aiAnalysis?.estimatedVolumeRange || "",
     severity: report.aiAnalysis?.severity || "low",
-    priorityScore: report.priority?.score || 0,
+    hazardFlag: Boolean(report.aiAnalysis?.hazardFlag),
+    recyclableHeavy: Boolean(report.aiAnalysis?.recyclableHeavy),
+    detectionSummary: report.aiAnalysis?.detectionSummary || null,
+    priorityScore: report.priority?.score ?? 0,
+    effectivePriority: { score: breakdown.score, level: breakdown.level },
+    priorityBreakdown: breakdown,
     potentialRisk: (report.aiAnalysis?.potentialRisks || []).join(", "),
     recommendation: report.aiAnalysis?.recommendation || "",
     duplicateProbability: report.duplicate?.similarityScore || 0,
+    duplicate: report.duplicate || { isPotentialDuplicate: false, primaryReportId: "", similarityScore: 0, distanceMeters: 0 },
     comment: report.citizenComment || "",
     status: report.status,
     assignedTeam: report.assignedTeamId,
@@ -152,6 +217,10 @@ export function formatReportForClient(report) {
     rejectionReason: report.rejectionReason || "",
     workerNotes: report.workerNotes || "",
     actualVolume: report.actualVolume || "",
+    escalated: Boolean(report.escalated),
+    escalatedAt: report.escalatedAt || null,
+    recyclingStatus: report.recyclingStatus || "",
+    recyclingPartner: report.recyclingPartner || "",
     createdAt: report.createdAt,
     updatedAt: report.updatedAt,
     statusTimeline: report.statusTimeline || [],
@@ -164,13 +233,19 @@ export function formatTeamForClient(team) {
     id: team.id,
     name: team.name,
     leader: team.leaderId,
-    members: team.memberIds.length,
-    vehicle: team.vehicle.type,
-    currentLocation: team.currentLocation.label,
+    leaderId: team.leaderId,
+    memberIds: team.memberIds || [],
+    memberCount: (team.memberIds || []).length,
+    wardIds: team.wardIds || [],
+    vehicle: team.vehicle?.type || "",
+    vehicleType: team.vehicle?.type || "",
+    vehicleCapacity: team.vehicle?.capacity || "",
+    currentLocation: team.currentLocation?.label || "",
     availability: team.status,
     currentTask: team.currentAssignmentId,
     tasksCompletedToday: team.completedToday,
     status: team.status,
+    averageResolutionTime: team.averageResolutionTime,
     etaMinutes: team.etaMinutes,
     distanceKm: team.distanceKm,
     aiMatchScore: team.aiMatchScore,
