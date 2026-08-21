@@ -1,44 +1,52 @@
 import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
 
 const LIVE_EVENTS = [
-  "waste:created",
+  "waste:new",
   "waste:updated",
   "waste:status:update",
-  "waste:deleted",
   "complaint:escalated",
   "team:update",
   "team:deleted",
 ];
 
-let sharedSocket = null;
+let sharedSource = null;
+let sourceRefCount = 0;
 const listeners = new Set();
 
-function getSocket() {
-  if (sharedSocket) return sharedSocket;
+function getEventSource() {
+  if (sharedSource) return sharedSource;
   try {
-    sharedSocket = io(window.location.origin, { transports: ["websocket", "polling"], reconnectionDelayMax: 15000 });
+    sharedSource = new EventSource("/api/events");
   } catch {
     return null;
   }
+  sharedSource.onopen = () => {
+    for (const l of listeners) l.onStatus?.(true);
+  };
+  sharedSource.onerror = () => {
+    for (const l of listeners) l.onStatus?.(false);
+    // EventSource reconnects automatically; nothing else to do.
+  };
   for (const evt of LIVE_EVENTS) {
-    sharedSocket.on(evt, (payload) => {
+    sharedSource.addEventListener(evt, (e) => {
+      let payload = null;
+      try { payload = e.data ? JSON.parse(e.data) : null; } catch { payload = e.data; }
       for (const l of listeners) {
-        if (l.events.includes(evt)) {
+        if (!l.events || l.events.includes(evt)) {
           try { l.callback(evt, payload); } catch (err) { console.warn("[useLive] listener error:", err); }
         }
       }
     });
   }
-  return sharedSocket;
+  return sharedSource;
 }
 
 /**
- * Subscribes to live socket events with an automatic polling fallback so the UI
- * stays fresh even when websockets are blocked (e.g. some corporate proxies).
+ * Subscribes to live server-sent events with an automatic polling fallback so
+ * the UI stays fresh even when the stream is unavailable.
  *
- * @param {(event: string, payload: any) => void} onEvent called on socket event
- * @param {string[]} events socket events to listen for (default: all)
+ * @param {(event: string, payload: any) => void} onEvent called on live event
+ * @param {string[]} events events to listen for (default: all)
  * @param {{ pollMs?: number, poll?: () => void }} options polling fallback config
  */
 export function useLive(onEvent, events = LIVE_EVENTS, { pollMs = 30000, poll } = {}) {
@@ -49,23 +57,22 @@ export function useLive(onEvent, events = LIVE_EVENTS, { pollMs = 30000, poll } 
   pollRef.current = poll;
 
   useEffect(() => {
-    const socket = getSocket();
-    const entry = { events, callback: (evt, payload) => cbRef.current?.(evt, payload) };
+    const entry = { events, callback: (evt, payload) => cbRef.current?.(evt, payload), onStatus: setConnected };
     listeners.add(entry);
-    if (socket) {
-      setConnected(socket.connected);
-      const onConnect = () => setConnected(true);
-      const onDisconnect = () => setConnected(false);
-      socket.on("connect", onConnect);
-      socket.on("disconnect", onDisconnect);
-      return () => {
-        listeners.delete(entry);
-        socket.off("connect", onConnect);
-        socket.off("disconnect", onDisconnect);
-      };
-    }
-    return () => listeners.delete(entry);
-  }, [events]);
+    sourceRefCount += 1;
+    const es = getEventSource();
+    if (es && es.readyState === 1) setConnected(true);
+    return () => {
+      listeners.delete(entry);
+      sourceRefCount -= 1;
+      if (sourceRefCount <= 0 && sharedSource) {
+        sharedSource.close();
+        sharedSource = null;
+        sourceRefCount = 0;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!pollMs || !poll) return undefined;

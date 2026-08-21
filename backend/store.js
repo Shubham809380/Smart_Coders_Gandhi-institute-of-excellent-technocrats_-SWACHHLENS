@@ -321,6 +321,10 @@ export const store = {
       status: "status ASC, priority_score DESC",
     };
     sql += ` ORDER BY ${sorts[sort] || sorts.priority}`;
+    if (filters.limit) {
+      sql += ` LIMIT $${i++}`;
+      params.push(Math.max(1, Number(filters.limit) || 50));
+    }
     const res = await query(sql, params);
     return res.rows.map(rowToReport);
   },

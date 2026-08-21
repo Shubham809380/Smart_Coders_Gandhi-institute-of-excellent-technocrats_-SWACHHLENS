@@ -1,6 +1,7 @@
 ﻿import { ROLES, ADMIN_ROLES, REPORT_STATUSES, PRIORITY_WEIGHTS } from "./constants.js";
 import { getAIProvider, MockAIProvider } from "./ai/provider.js";
 import { store } from "./store.js";
+import { publish } from "./events.js";
 import {
   calculatePriority,
   createId,
@@ -397,6 +398,7 @@ export async function handleApiRequest(req, res) {
       const created = await store.createReport(baseReport);
       await store.createNotification({ userId: auth.user.uid, title: "Report submitted", body: `${reportId} is now in the AI review queue.` });
       await store.createNotification({ userId: "user-admin", title: "New complaint received", body: `${reportId} needs municipal review.` });
+      publish("waste:new", { id: reportId, wardId: baseReport.location.wardId });
       return json(res, 201, { report: formatReportForClient(created) });
     }
 
@@ -466,6 +468,7 @@ export async function handleApiRequest(req, res) {
       }
       const updated = await store.updateReport(reportId, updates);
       await store.createNotification({ userId: report.citizenId, title: `Report ${nextStatus.replace(/_/g, " ")}`, body: `${reportId} is now ${nextStatus.replace(/_/g, " ")}.` });
+      publish("waste:status:update", { id: reportId, status: nextStatus });
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -596,6 +599,7 @@ export async function handleApiRequest(req, res) {
         recyclable: url.searchParams.get("recyclable") || undefined,
         minPriority: url.searchParams.get("minPriority") || undefined,
         sort: url.searchParams.get("sort") || undefined,
+        limit: url.searchParams.get("limit") || undefined,
       };
       const reports = await store.getComplaints(filters);
       return json(res, 200, { reports: reports.map(formatReportForClient), total: reports.length });
@@ -625,6 +629,7 @@ export async function handleApiRequest(req, res) {
       if (body.adminNotes !== undefined) updates.workerNotes = String(body.adminNotes);
       if (!Object.keys(updates).length) return json(res, 400, { error: { code: "VALIDATION", message: "No valid fields to update." } });
       const updated = await store.updateReport(reportId, updates);
+      publish("waste:updated", { id: reportId });
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -641,6 +646,8 @@ export async function handleApiRequest(req, res) {
       const report = await store.getReportById(reportId);
       await store.createNotification({ userId: report.citizenId, title: "Cleanup team assigned", body: `${team.name} is now assigned to ${reportId}.`, kind: "assignment", reportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `assigned_${teamId}_to_${reportId}` });
+      publish("waste:updated", { id: reportId, teamId });
+      publish("team:update", { teamId });
 return json(res, 200, { report: formatReportForClient(report), team: formatTeamForClient(team) });
     }
 
@@ -659,6 +666,8 @@ return json(res, 200, { report: formatReportForClient(report), team: formatTeamF
       await store.createNotification({ userId: report.citizenId, title: "Complaint escalated", body: `${reportId} has been escalated for priority action.`, kind: "escalation", reportId });
       await store.createNotification({ userId: "user-admin", title: "Complaint escalated", body: `${auth.user.name} escalated ${reportId}.`, kind: "escalation", reportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `escalated_${reportId}` });
+      publish("complaint:escalated", { id: reportId });
+      publish("waste:updated", { id: reportId, escalated: true });
 return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -675,6 +684,7 @@ return json(res, 200, { report: formatReportForClient(updated) });
       const { report } = await store.markAsDuplicate(reportId, primaryReportId);
       await store.createNotification({ userId: report.citizenId, title: "Merged with existing complaint", body: `${reportId} was merged into ${primaryReportId}. You will get updates on the original complaint.`, kind: "duplicate", reportId: primaryReportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `marked_${reportId}_duplicate_of_${primaryReportId}` });
+      publish("waste:updated", { id: reportId, duplicateOf: primaryReportId });
 return json(res, 200, { ok: true, report: formatReportForClient(report) });
     }
 
@@ -689,6 +699,7 @@ return json(res, 200, { ok: true, report: formatReportForClient(report) });
       const updated = await store.routeToRecycler(reportId, partner);
       if (!updated) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `routed_${reportId}_to_recycler_${partner}` });
+      publish("waste:updated", { id: reportId, recyclingPartner: partner });
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -738,6 +749,10 @@ return json(res, 200, { ok: true, report: formatReportForClient(report) });
         }
       }
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `bulk_assigned_${assigned.length}_reports_to_${teamId}` });
+      if (assigned.length) {
+        publish("waste:updated", { ids: reportIds, teamId });
+        publish("team:update", { teamId });
+      }
 return json(res, 200, { assignedCount: assigned.length, reports: assigned, team: formatTeamForClient(team) });
     }
 
@@ -751,7 +766,8 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
     if (pathname === "/api/admin/alerts" && req.method === "GET") {
       const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
-      const alerts = await store.getAdminAlerts();
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 40));
+      const alerts = await store.getAdminAlerts(limit);
       return json(res, 200, { alerts });
     }
 
@@ -778,6 +794,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
         status: ["available", "assigned", "en_route", "off_duty"].includes(body.status) ? body.status : "available",
       });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `created_team_${team.id}` });
+      publish("team:update", { teamId: team.id });
       return json(res, 201, { team: formatTeamForClient(team) });
     }
 
@@ -799,6 +816,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       const team = await store.updateTeam(teamId, updates);
       if (!team) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `updated_team_${teamId}` });
+      publish("team:update", { teamId });
       return json(res, 200, { team: formatTeamForClient(team) });
     }
 
@@ -810,6 +828,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       if (!existing) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
       await store.deleteTeam(teamId);
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `deleted_team_${teamId}` });
+      publish("team:deleted", { teamId });
       return json(res, 200, { ok: true });
     }
 
@@ -821,6 +840,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       if (!groupId) return json(res, 400, { error: { code: "VALIDATION", message: "Duplicate group id is required." } });
       const result = await store.dismissDuplicateGroup(groupId);
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `dismissed_duplicate_group_${groupId}` });
+      publish("waste:updated", { dismissedGroup: groupId });
       return json(res, 200, result);
     }
 
@@ -868,6 +888,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       for (const r of mergedReports.filter((r) => r.duplicate?.primaryReportId === body.keepId)) {
         await store.createNotification({ userId: r.citizenId, title: "Merged with existing complaint", body: `${r.id} was confirmed as a duplicate of ${body.keepId}.`, kind: "duplicate", reportId: body.keepId });
       }
+      publish("waste:updated", { mergedGroup: body.groupId, keepId: body.keepId });
       return json(res, 200, result);
     }
 

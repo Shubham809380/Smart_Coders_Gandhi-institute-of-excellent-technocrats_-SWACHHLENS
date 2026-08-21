@@ -523,9 +523,13 @@ export const adminService = {
         const data = await api("/admin/hotspots");
         return data.cells || [];
     },
-    async getAlerts() {
-        const data = await api("/admin/alerts");
+    async getAlerts(limit = 40) {
+        const data = await api(`/admin/alerts?limit=${encodeURIComponent(limit)}`);
         return data.alerts || [];
+    },
+    async getRecyclingQueue() {
+        const data = await api("/admin/complaints?recyclable=true&sort=priority");
+        return data.reports || [];
     },
     async getTeamsWithLoad() {
         const data = await api("/admin/teams");

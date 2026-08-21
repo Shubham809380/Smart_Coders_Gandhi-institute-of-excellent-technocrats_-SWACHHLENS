@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { initDatabase } from "./backend/db.js";
 import { seedDatabase, seedVehicles } from "./backend/seed-neon.js";
 import { handleApiRequest } from "./backend/router.js";
+import { subscribe as subscribeEvents } from "./backend/events.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const rootDir = normalize(join(__filename, ".."));
@@ -33,6 +34,10 @@ function startServer(portToUse) {
     try {
       const urlPath = req.url?.split("?")[0] || "/";
       if (urlPath.startsWith("/api/")) {
+        if (urlPath === "/api/events") {
+          subscribeEvents(req, res);
+          return;
+        }
         await handleApiRequest(req, res);
         return;
       }

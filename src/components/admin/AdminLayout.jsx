@@ -26,12 +26,14 @@ const NAV_SECTIONS = [
     items: [
       { to: "/admin/teams", icon: "users", label: "Teams & Fleet" },
       { to: "/admin/recycling", icon: "recycle", label: "Recycling" },
-      { to: "/admin/workers", icon: "truck", label: "Workers" },
     ],
   },
   {
     label: "Insights",
-    items: [{ to: "/admin/analytics", icon: "chart", label: "Analytics" }],
+    items: [
+      { to: "/admin/alerts", icon: "bell", label: "Alerts" },
+      { to: "/admin/analytics", icon: "chart", label: "Analytics" },
+    ],
   },
 ];
 
@@ -90,7 +92,7 @@ function AlertBell() {
     return () => clearInterval(id);
   }, []);
 
-  useLive(() => load(), ["waste:created", "complaint:escalated"], { pollMs: 0 });
+  useLive(() => load(), ["waste:new", "complaint:escalated"], { pollMs: 0 });
 
   useEffect(() => {
     const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };

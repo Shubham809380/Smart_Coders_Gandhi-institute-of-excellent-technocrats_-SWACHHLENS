@@ -7,7 +7,7 @@ import { useLive } from "../../hooks/useLive.js";
 
 const QUICK_LINKS = [
   { to: "/admin/map", icon: "map", label: "Live Map", desc: "Hotspots & field units" },
-  { to: "/admin/queue", icon: "list", label: "Priority Queue", desc: "Dispatch & bulk assign" },
+  { to: "/admin/queue", icon: "queue", label: "Priority Queue", desc: "Dispatch & bulk assign" },
   { to: "/admin/verification", icon: "eye", label: "Verification", desc: "Cleanup proof review" },
   { to: "/admin/duplicates", icon: "copy", label: "Duplicates", desc: "AI-flagged merge review" },
   { to: "/admin/recycling", icon: "recycle", label: "Recycling", desc: "Route heavy recyclables" },
@@ -139,7 +139,7 @@ export default function AdminDashboard() {
                         <p className="text-xs adm-muted truncate">{wasteTypeLabel(r.wasteType)} · {r.address || "Unknown location"}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <PriorityBadge score={r.effectivePriority ?? r.priorityScore} />
+                        <PriorityBadge score={r.effectivePriority?.score ?? r.priorityScore} />
                         <p className="text-[10px] adm-muted mt-0.5">{relativeTime(r.createdAt)}</p>
                       </div>
                     </Link>

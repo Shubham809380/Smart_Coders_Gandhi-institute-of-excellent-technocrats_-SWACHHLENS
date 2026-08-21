@@ -3006,6 +3006,7 @@ input[type="file"] {
 .adm-surface-bg { background: var(--adm-surface); }
 .adm-raised-bg { background: var(--adm-surface-2); }
 .adm-border-c { border-color: var(--adm-border); }
+.adm-divide > :not([hidden]) ~ :not([hidden]) { border-color: var(--adm-border); }
 .adm-btn-primary {
   background: var(--adm-primary);
   color: #ffffff;
