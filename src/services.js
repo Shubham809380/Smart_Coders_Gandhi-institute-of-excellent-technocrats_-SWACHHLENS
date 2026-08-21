@@ -487,6 +487,64 @@ export const adminService = {
         const data = await api(`/admin/complaints${qs ? "?" + qs : ""}`);
         return data;
     },
+    async getComplaint(id) {
+        const data = await api(`/admin/complaints/${encodeURIComponent(id)}`);
+        return data.report;
+    },
+    async updateComplaint(id, updates) {
+        const data = await api(`/admin/complaints/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(updates) });
+        return data.report;
+    },
+    async assignComplaint(id, teamId) {
+        const data = await api(`/admin/complaints/${encodeURIComponent(id)}/assign`, { method: "PATCH", body: JSON.stringify({ teamId }) });
+        return data;
+    },
+    async escalateComplaint(id) {
+        const data = await api(`/admin/complaints/${encodeURIComponent(id)}/escalate`, { method: "PATCH" });
+        return data.report;
+    },
+    async markDuplicate(id, primaryReportId) {
+        const data = await api(`/admin/complaints/${encodeURIComponent(id)}/duplicate`, { method: "PATCH", body: JSON.stringify({ primaryReportId }) });
+        return data.report;
+    },
+    async routeToRecycler(id, partner) {
+        const data = await api(`/admin/complaints/${encodeURIComponent(id)}/recycle`, { method: "PATCH", body: JSON.stringify({ partner }) });
+        return data.report;
+    },
+    async verifyWithAI(id) {
+        const data = await api(`/admin/complaints/${encodeURIComponent(id)}/verify-ai`, { method: "POST" });
+        return data;
+    },
+    async bulkAssign(reportIds, teamId) {
+        const data = await api("/admin/bulk-assign", { method: "POST", body: JSON.stringify({ reportIds, teamId }) });
+        return data;
+    },
+    async getHotspotCells() {
+        const data = await api("/admin/hotspots");
+        return data.cells || [];
+    },
+    async getAlerts() {
+        const data = await api("/admin/alerts");
+        return data.alerts || [];
+    },
+    async getTeamsWithLoad() {
+        const data = await api("/admin/teams");
+        return data.teams || [];
+    },
+    async createTeam(payload) {
+        const data = await api("/admin/teams", { method: "POST", body: JSON.stringify(payload) });
+        return data.team;
+    },
+    async updateTeam(id, updates) {
+        const data = await api(`/admin/teams/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(updates) });
+        return data.team;
+    },
+    async deleteTeam(id) {
+        return api(`/admin/teams/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async dismissDuplicateGroup(groupId) {
+        return api("/admin/duplicates/dismiss", { method: "POST", body: JSON.stringify({ groupId }) });
+    },
     async getUsers() {
         const data = await api("/admin/users");
         return data.users;

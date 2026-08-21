@@ -2999,3 +2999,36 @@ input[type="file"] {
 @keyframes adm-shimmer {
   100% { transform: translateX(100%); }
 }
+
+/* Admin shared utility classes */
+.adm-text { color: var(--adm-text); }
+.adm-muted { color: var(--adm-muted); }
+.adm-surface-bg { background: var(--adm-surface); }
+.adm-raised-bg { background: var(--adm-surface-2); }
+.adm-border-c { border-color: var(--adm-border); }
+.adm-btn-primary {
+  background: var(--adm-primary);
+  color: #ffffff;
+}
+.adm-btn-primary:hover:not(:disabled) { background: var(--adm-primary-strong); }
+.adm-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+.adm-btn-ghost {
+  background: transparent;
+  color: var(--adm-text);
+  border: 1px solid var(--adm-border);
+}
+.adm-btn-ghost:hover:not(:disabled) { background: var(--adm-surface-2); }
+.adm-card {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+}
+.adm-input {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  color: var(--adm-text);
+  border-radius: 10px;
+  outline: none;
+}
+.adm-input:focus { border-color: var(--adm-primary); }
+.adm-input::placeholder { color: var(--adm-muted); }
