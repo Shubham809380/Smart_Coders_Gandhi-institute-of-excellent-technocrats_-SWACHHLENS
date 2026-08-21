@@ -17,6 +17,7 @@ import {
   saveDataUrlMedia,
   validateStatusTransition,
 } from "./utils.js";
+import { welcomeEmail, reportReceivedEmail, teamAssignedEmail, reportResolvedEmail } from "./mailer.js";
 
 async function reverseGeocode(lat, lng) {
   try {
@@ -149,6 +150,7 @@ export async function handleApiRequest(req, res) {
       const uid = createId("user");
       const { salt, passwordHash } = await createPasswordHash(password);
       const user = await store.createUser({ uid, name, email, phone, passwordHash, salt, role });
+      welcomeEmail(user);
       const token = createSessionToken();
       await store.createSession(token, uid);
       return json(res, 201, { sessionToken: token, currentUser: sanitizeUser(user), role: user.role, isAuthenticated: true, loading: false, error: "" });
@@ -398,6 +400,7 @@ export async function handleApiRequest(req, res) {
       const created = await store.createReport(baseReport);
       await store.createNotification({ userId: auth.user.uid, title: "Report submitted", body: `${reportId} is now in the AI review queue.` });
       await store.createNotification({ userId: "user-admin", title: "New complaint received", body: `${reportId} needs municipal review.` });
+      reportReceivedEmail({ email: auth.user.email, name: auth.user.name, reportId, address: resolvedAddress, priority: baseReport.priority.level || "medium" });
       publish("waste:new", { id: reportId, wardId: baseReport.location.wardId });
       return json(res, 201, { report: formatReportForClient(created) });
     }
@@ -468,6 +471,10 @@ export async function handleApiRequest(req, res) {
       }
       const updated = await store.updateReport(reportId, updates);
       await store.createNotification({ userId: report.citizenId, title: `Report ${nextStatus.replace(/_/g, " ")}`, body: `${reportId} is now ${nextStatus.replace(/_/g, " ")}.` });
+      if (nextStatus === REPORT_STATUSES.RESOLVED) {
+        const citizen = await store.getUserByUid(report.citizenId);
+        if (citizen) reportResolvedEmail({ email: citizen.email, name: citizen.name, reportId });
+      }
       publish("waste:status:update", { id: reportId, status: nextStatus });
       return json(res, 200, { report: formatReportForClient(updated) });
     }
@@ -645,6 +652,8 @@ export async function handleApiRequest(req, res) {
       await store.assignTeam(reportId, teamId);
       const report = await store.getReportById(reportId);
       await store.createNotification({ userId: report.citizenId, title: "Cleanup team assigned", body: `${team.name} is now assigned to ${reportId}.`, kind: "assignment", reportId });
+      const citizen = await store.getUserByUid(report.citizenId);
+      if (citizen) teamAssignedEmail({ email: citizen.email, name: citizen.name, reportId, teamName: team.name });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `assigned_${teamId}_to_${reportId}` });
       publish("waste:updated", { id: reportId, teamId });
       publish("team:update", { teamId });

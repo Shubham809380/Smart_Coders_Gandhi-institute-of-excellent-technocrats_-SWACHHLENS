@@ -9,6 +9,14 @@ import { store } from "./backend/store.js";
 import { handleApiRequest } from "./backend/router.js";
 import { subscribe as subscribeEvents } from "./backend/events.js";
 
+// Resilience: transient DNS/Neon blips must log, never kill the server.
+process.on("unhandledRejection", (reason) => {
+  console.error("[server] unhandled rejection (kept alive):", reason?.code || reason?.message || reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[server] uncaught exception (kept alive):", err?.code || err?.message || err);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const rootDir = normalize(join(__filename, ".."));
 const args = process.argv.slice(2);

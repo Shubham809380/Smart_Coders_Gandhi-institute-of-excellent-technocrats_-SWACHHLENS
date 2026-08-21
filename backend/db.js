@@ -10,19 +10,42 @@ export function getPool() {
       ssl: { rejectUnauthorized: false },
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: 15000,
+      // Never let a stalled Neon query hold a pool client forever.
+      statement_timeout: 20000,
+      query_timeout: 20000,
+      // Keep long-lived connections alive through NAT/firewalls.
+      keepalives: 1,
+      keepalivesIdle: 30000,
+      keepalivesInterval: 10000,
+    });
+    // A background/idle client error must never take the whole server down.
+    pool.on("error", (err) => {
+      console.error("[db] idle client error (server keeps running):", err.code || err.message);
     });
   }
   return pool;
 }
 
-export async function query(text, params) {
-  const client = await getPool().connect();
+// Transient network/Neon errors worth retrying — match codes AND messages,
+// because errors like "Connection terminated unexpectedly" carry no code.
+const TRANSIENT_RE = /ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|ECONNREFUSED|08006|08001|terminated|timeout|reset|socket/i;
+
+export async function query(text, params, attempt = 0) {
+  let client;
   try {
+    client = await getPool().connect();
     const result = await client.query(text, params);
-    return result;
-  } finally {
     client.release();
+    return result;
+  } catch (err) {
+    if (client) { try { client.release(); } catch {} }
+    const haystack = `${err?.code || ""} ${err?.message || ""} ${err?.cause?.code || ""} ${err?.cause?.message || ""}`;
+    if (attempt < 2 && TRANSIENT_RE.test(haystack)) {
+      await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+      return query(text, params, attempt + 1);
+    }
+    throw err;
   }
 }
 

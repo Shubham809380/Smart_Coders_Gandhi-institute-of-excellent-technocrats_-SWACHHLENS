@@ -70,13 +70,18 @@ async function api(path, options = {}) {
     const token = getToken();
     const headers = { "Content-Type": "application/json; charset=utf-8" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
     let res;
     try {
-        res = await fetch(`${API_BASE}${path}`, { ...options, headers: { ...headers, ...options.headers } });
+        res = await fetch(`${API_BASE}${path}`, { ...options, headers: { ...headers, ...options.headers }, signal: controller.signal });
     } catch (fetchErr) {
+        if (fetchErr?.name === "AbortError") throw new Error("Server took too long to respond. Please retry.");
         const isNetwork = fetchErr?.name === "TypeError" || fetchErr?.message?.includes("fetch") || fetchErr?.message?.includes("network");
         if (isNetwork) throw new Error("Network error. Please check your internet connection and try again.");
         throw new Error(`Connection failed: ${fetchErr?.message || "Server unreachable"}`);
+    } finally {
+        clearTimeout(timer);
     }
     const data = await res.json();
     if (!res.ok) {

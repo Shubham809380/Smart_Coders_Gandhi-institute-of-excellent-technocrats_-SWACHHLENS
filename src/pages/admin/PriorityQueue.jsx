@@ -61,7 +61,7 @@ export default function PriorityQueue() {
     try {
       setError("");
       const params = {};
-      if (filters.status) params.status = filters.status; else params.status = OPEN_STATUSES;
+      if (filters.status) params.status = filters.status; else params.status = "open";
       if (filters.severity) params.severity = filters.severity;
       if (filters.wardId) params.wardId = filters.wardId;
       if (filters.search) params.search = filters.search;
@@ -152,7 +152,7 @@ export default function PriorityQueue() {
           </div>
           <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className="adm-input px-2.5 py-2 text-sm font-semibold">
             <option value="">All open</option>
-            <option value={OPEN_STATUSES}>Open pipeline</option>
+            <option value={OPEN_STATUSES}>Pre-dispatch pipeline</option>
             <option value="verification">Verification</option>
             <option value="resolved">Resolved</option>
             <option value="rejected">Rejected</option>
@@ -195,7 +195,7 @@ export default function PriorityQueue() {
             <EmptyState icon="queue" title="Queue is clear" body="No complaints match the current filters." />
           ) : (
             <div className="overflow-x-auto adm-scroll">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[880px]">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider adm-muted border-b adm-border-c" style={{ background: "var(--adm-surface-2)" }}>
                     <th className="pl-4 pr-2 py-2.5 w-8">
