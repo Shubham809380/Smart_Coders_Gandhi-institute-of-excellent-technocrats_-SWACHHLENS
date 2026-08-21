@@ -20,14 +20,15 @@ const MyReports = lazy(() => import("./pages/citizen/MyReports"));
 const Profile = lazy(() => import("./pages/citizen/Profile"));
 
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
-const AIPriorityQueue = lazy(() => import("./pages/admin/AIPriorityQueue"));
-const SmartDispatch = lazy(() => import("./pages/admin/SmartDispatch"));
-const ComplaintQueue = lazy(() => import("./pages/admin/ComplaintQueue"));
+const LiveMap = lazy(() => import("./pages/admin/LiveMap"));
+const PriorityQueue = lazy(() => import("./pages/admin/PriorityQueue"));
 const ComplaintDetail = lazy(() => import("./pages/admin/ComplaintDetail"));
-const WorkerManagement = lazy(() => import("./pages/admin/WorkerManagement"));
-const VerificationQueue = lazy(() => import("./pages/admin/VerificationQueue"));
-const Analytics = lazy(() => import("./pages/admin/Analytics"));
 const DuplicateReview = lazy(() => import("./pages/admin/DuplicateReview"));
+const VerificationQueue = lazy(() => import("./pages/admin/VerificationQueue"));
+const TeamsFleet = lazy(() => import("./pages/admin/TeamsFleet"));
+const RecyclingRouting = lazy(() => import("./pages/admin/RecyclingRouting"));
+const Analytics = lazy(() => import("./pages/admin/Analytics"));
+const AlertsCenter = lazy(() => import("./pages/admin/AlertsCenter"));
 
 const WorkerTasks = lazy(() => import("./pages/worker/WorkerTasks"));
 const TaskDetail = lazy(() => import("./pages/worker/TaskDetail"));
@@ -177,34 +178,39 @@ export default function App() {
           } />
 
           {/* Admin Routes */}
+          <Route path="/admin" element={
+            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
           <Route path="/admin/dashboard" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}>
               <AdminDashboard />
             </ProtectedRoute>
           } />
-          <Route path="/admin/ai-priority-queue" element={
+          <Route path="/admin/map" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <AIPriorityQueue />
+              <LiveMap />
             </ProtectedRoute>
           } />
-          <Route path="/admin/smart-dispatch" element={
+          <Route path="/admin/queue" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <SmartDispatch />
+              <PriorityQueue />
             </ProtectedRoute>
           } />
-          <Route path="/admin/complaints" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <ComplaintQueue />
-            </ProtectedRoute>
-          } />
+          {/* Legacy routes → consolidated screens */}
+          <Route path="/admin/ai-priority-queue" element={<Navigate to="/admin/queue" replace />} />
+          <Route path="/admin/smart-dispatch" element={<Navigate to="/admin/queue" replace />} />
+          <Route path="/admin/complaints" element={<Navigate to="/admin/queue" replace />} />
+          <Route path="/admin/workers" element={<Navigate to="/admin/teams" replace />} />
           <Route path="/admin/complaints/:reportId" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}>
               <ComplaintDetailWrapper />
             </ProtectedRoute>
           } />
-          <Route path="/admin/workers" element={
+          <Route path="/admin/duplicates" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <WorkerManagement />
+              <DuplicateReview />
             </ProtectedRoute>
           } />
           <Route path="/admin/verification" element={
@@ -212,14 +218,24 @@ export default function App() {
               <VerificationQueue />
             </ProtectedRoute>
           } />
+          <Route path="/admin/teams" element={
+            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
+              <TeamsFleet />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/recycling" element={
+            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
+              <RecyclingRouting />
+            </ProtectedRoute>
+          } />
           <Route path="/admin/analytics" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}>
               <Analytics />
             </ProtectedRoute>
           } />
-          <Route path="/admin/duplicates" element={
+          <Route path="/admin/alerts" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <DuplicateReview />
+              <AlertsCenter />
             </ProtectedRoute>
           } />
 
