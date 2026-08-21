@@ -149,6 +149,7 @@ export default {
         bounceIn: "bounceIn 0.4s cubic-bezier(0.22,1,0.36,1)",
         slideUp: "slideUp 0.5s ease-out",
         pulseGlow: "pulseGlow 2s ease-in-out infinite",
+        "pulse-row": "pulse-row 1.6s ease-in-out infinite",
       },
     },
   },

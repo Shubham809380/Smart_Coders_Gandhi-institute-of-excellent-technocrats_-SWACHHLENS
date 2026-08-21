@@ -70,6 +70,19 @@
     --ops-sev-high: #D6393E;
     --ops-shadow: 0 10px 20px -8px rgba(15,23,42,0.08);
     --ops-glow: 0 0 0 transparent;
+
+    /* Admin console tokens (light) */
+    --adm-bg: #F7F9F8;
+    --adm-surface: #FFFFFF;
+    --adm-surface-2: #EFF3F1;
+    --adm-border: #DCE4E0;
+    --adm-text: #10201B;
+    --adm-muted: #5C6B65;
+    --adm-primary: #00A896;
+    --adm-primary-strong: #007D70;
+    --adm-ok: #16A34A;
+    --adm-warn: #D97706;
+    --adm-danger: #DC2626;
 }
 
 [data-theme="dark"] {
@@ -107,6 +120,19 @@
     --ops-sev-high: #E5484D;
     --ops-shadow: 0 10px 30px -8px rgba(0,0,0,0.6);
     --ops-glow: 0 0 40px -10px;
+
+    /* Admin console tokens (dark) */
+    --adm-bg: #0B0F0E;
+    --adm-surface: #141A18;
+    --adm-surface-2: #1A2220;
+    --adm-border: #24302C;
+    --adm-text: #E6EFEB;
+    --adm-muted: #8AA099;
+    --adm-primary: #00A896;
+    --adm-primary-strong: #06C1AC;
+    --adm-ok: #34C77B;
+    --adm-warn: #F5A623;
+    --adm-danger: #E5484D;
 }
 
 /* Theme transition */
@@ -2910,4 +2936,66 @@ input[type="file"] {
         margin-bottom: 12px;
     }
 }
+}
+/* ===================== Admin Console ===================== */
+.adm-scroll::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+  height: 8px;
+}
+.adm-scroll::-webkit-scrollbar-thumb {
+  background: var(--adm-border);
+  border-radius: 8px;
+}
+.adm-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Leaflet map theming for the admin console */
+.leaflet-container {
+  background: var(--adm-bg);
+  font-family: inherit;
+}
+.leaflet-control-attribution {
+  background: var(--adm-surface) !important;
+  color: var(--adm-muted) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a {
+  color: var(--adm-muted) !important;
+}
+.leaflet-bar,
+.leaflet-bar a {
+  background: var(--adm-surface) !important;
+  color: var(--adm-text) !important;
+  border-color: var(--adm-border) !important;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--adm-surface) !important;
+  color: var(--adm-text) !important;
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.45) !important;
+}
+.leaflet-popup-content {
+  margin: 12px 14px !important;
+  font-size: 13px;
+}
+
+/* Admin skeleton shimmer */
+.adm-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--adm-surface-2);
+  border-radius: 8px;
+}
+.adm-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  animation: adm-shimmer 1.4s infinite;
+}
+@keyframes adm-shimmer {
+  100% { transform: translateX(100%); }
 }
