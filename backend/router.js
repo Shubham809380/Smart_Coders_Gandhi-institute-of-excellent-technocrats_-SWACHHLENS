@@ -1,4 +1,4 @@
-import { ROLES, ADMIN_ROLES, REPORT_STATUSES, PRIORITY_WEIGHTS } from "./constants.js";
+﻿import { ROLES, ADMIN_ROLES, REPORT_STATUSES, PRIORITY_WEIGHTS } from "./constants.js";
 import { getAIProvider, MockAIProvider } from "./ai/provider.js";
 import { store } from "./store.js";
 import {
@@ -16,12 +16,6 @@ import {
   saveDataUrlMedia,
   validateStatusTransition,
 } from "./utils.js";
-
-let io = null;
-
-export function setSocketIO(socketIO) {
-  io = socketIO;
-}
 
 async function reverseGeocode(lat, lng) {
   try {
@@ -403,7 +397,6 @@ export async function handleApiRequest(req, res) {
       const created = await store.createReport(baseReport);
       await store.createNotification({ userId: auth.user.uid, title: "Report submitted", body: `${reportId} is now in the AI review queue.` });
       await store.createNotification({ userId: "user-admin", title: "New complaint received", body: `${reportId} needs municipal review.` });
-      if (io) io.emit("waste:created", formatReportForClient(created));
       return json(res, 201, { report: formatReportForClient(created) });
     }
 
@@ -433,7 +426,6 @@ export async function handleApiRequest(req, res) {
       if (body.comment !== undefined) updates.citizenComment = String(body.comment || "");
       if (Object.keys(updates).length === 0) return json(res, 400, { error: { code: "VALIDATION", message: "No fields to update." } });
       const updated = await store.updateReport(reportId, updates);
-      if (io) io.emit("waste:updated", formatReportForClient(updated));
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -451,7 +443,6 @@ export async function handleApiRequest(req, res) {
       }
       const pool = (await import("./db.js")).getPool();
       await pool.query("DELETE FROM reports WHERE id = $1", [reportId]);
-      if (io) io.emit("waste:deleted", { reportId });
       return json(res, 200, { ok: true });
     }
 
@@ -475,7 +466,6 @@ export async function handleApiRequest(req, res) {
       }
       const updated = await store.updateReport(reportId, updates);
       await store.createNotification({ userId: report.citizenId, title: `Report ${nextStatus.replace(/_/g, " ")}`, body: `${reportId} is now ${nextStatus.replace(/_/g, " ")}.` });
-      if (io) io.emit("waste:status:update", formatReportForClient(updated));
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -544,7 +534,6 @@ export async function handleApiRequest(req, res) {
       if (!latitude || !longitude) return json(res, 400, { error: { code: "VALIDATION", message: "Latitude and longitude are required." } });
       const vehicle = await store.updateVehicleLocation(vehicleId, { latitude, longitude, label, speedKmh, heading, status });
       if (!vehicle) return json(res, 404, { error: { code: "NOT_FOUND", message: "Vehicle not found." } });
-      if (io) io.emit("vehicle:location:update", vehicle);
       return json(res, 200, { vehicle });
     }
 
@@ -636,7 +625,6 @@ export async function handleApiRequest(req, res) {
       if (body.adminNotes !== undefined) updates.workerNotes = String(body.adminNotes);
       if (!Object.keys(updates).length) return json(res, 400, { error: { code: "VALIDATION", message: "No valid fields to update." } });
       const updated = await store.updateReport(reportId, updates);
-      if (io) io.emit("waste:updated", formatReportForClient(updated));
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -654,8 +642,6 @@ export async function handleApiRequest(req, res) {
       await store.createNotification({ userId: report.citizenId, title: "Cleanup team assigned", body: `${team.name} is now assigned to ${reportId}.`, kind: "assignment", reportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `assigned_${teamId}_to_${reportId}` });
       if (io) {
-        io.emit("waste:updated", formatReportForClient(report));
-        io.emit("team:update", formatTeamForClient(await store.getTeamById(teamId)));
       }
       return json(res, 200, { report: formatReportForClient(report), team: formatTeamForClient(team) });
     }
@@ -676,8 +662,6 @@ export async function handleApiRequest(req, res) {
       await store.createNotification({ userId: "user-admin", title: "Complaint escalated", body: `${auth.user.name} escalated ${reportId}.`, kind: "escalation", reportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `escalated_${reportId}` });
       if (io) {
-        io.emit("waste:updated", formatReportForClient(updated));
-        io.emit("complaint:escalated", formatReportForClient(updated));
       }
       return json(res, 200, { report: formatReportForClient(updated) });
     }
@@ -696,8 +680,6 @@ export async function handleApiRequest(req, res) {
       await store.createNotification({ userId: report.citizenId, title: "Merged with existing complaint", body: `${reportId} was merged into ${primaryReportId}. You will get updates on the original complaint.`, kind: "duplicate", reportId: primaryReportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `marked_${reportId}_duplicate_of_${primaryReportId}` });
       if (io) {
-        io.emit("waste:updated", formatReportForClient(report));
-        io.emit("waste:updated", formatReportForClient(await store.getReportById(primaryReportId)));
       }
       return json(res, 200, { ok: true, report: formatReportForClient(report) });
     }
@@ -713,7 +695,6 @@ export async function handleApiRequest(req, res) {
       const updated = await store.routeToRecycler(reportId, partner);
       if (!updated) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `routed_${reportId}_to_recycler_${partner}` });
-      if (io) io.emit("waste:updated", formatReportForClient(updated));
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -764,8 +745,6 @@ export async function handleApiRequest(req, res) {
       }
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `bulk_assigned_${assigned.length}_reports_to_${teamId}` });
       if (io) {
-        for (const r of assigned) io.emit("waste:updated", r);
-        io.emit("team:update", formatTeamForClient(await store.getTeamById(teamId)));
       }
       return json(res, 200, { assignedCount: assigned.length, reports: assigned, team: formatTeamForClient(team) });
     }
@@ -807,7 +786,6 @@ export async function handleApiRequest(req, res) {
         status: ["available", "assigned", "en_route", "off_duty"].includes(body.status) ? body.status : "available",
       });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `created_team_${team.id}` });
-      if (io) io.emit("team:update", formatTeamForClient(team));
       return json(res, 201, { team: formatTeamForClient(team) });
     }
 
@@ -829,7 +807,6 @@ export async function handleApiRequest(req, res) {
       const team = await store.updateTeam(teamId, updates);
       if (!team) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `updated_team_${teamId}` });
-      if (io) io.emit("team:update", formatTeamForClient(team));
       return json(res, 200, { team: formatTeamForClient(team) });
     }
 
@@ -841,7 +818,6 @@ export async function handleApiRequest(req, res) {
       if (!existing) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
       await store.deleteTeam(teamId);
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `deleted_team_${teamId}` });
-      if (io) io.emit("team:deleted", { teamId });
       return json(res, 200, { ok: true });
     }
 
@@ -899,9 +875,7 @@ export async function handleApiRequest(req, res) {
       const mergedReports = await store.getComplaints({ status: "duplicate" });
       for (const r of mergedReports.filter((r) => r.duplicate?.primaryReportId === body.keepId)) {
         await store.createNotification({ userId: r.citizenId, title: "Merged with existing complaint", body: `${r.id} was confirmed as a duplicate of ${body.keepId}.`, kind: "duplicate", reportId: body.keepId });
-        if (io) io.emit("waste:updated", formatReportForClient(r));
       }
-      if (io) io.emit("waste:updated", formatReportForClient(kept));
       return json(res, 200, result);
     }
 

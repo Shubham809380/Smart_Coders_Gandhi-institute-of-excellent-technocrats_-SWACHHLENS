@@ -1,14 +1,25 @@
 import { randomBytes } from "node:crypto";
 import { extname, join } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, constants as fsConstants, accessSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { tmpdir } from "node:os";
 import bcrypt from "bcryptjs";
 import { PRIORITY_WEIGHTS, REPORT_STATUSES } from "./constants.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const uploadsRoot = join(__dirname, "uploads");
+
+function resolveUploadsRoot() {
+  const repoRoot = join(__dirname, "uploads");
+  try {
+    accessSync(repoRoot, fsConstants.W_OK);
+    return repoRoot;
+  } catch {}
+  return join(tmpdir(), "swachhlens-uploads");
+}
+
+const uploadsRoot = resolveUploadsRoot();
 
 export function nowIso() {
   return new Date().toISOString();

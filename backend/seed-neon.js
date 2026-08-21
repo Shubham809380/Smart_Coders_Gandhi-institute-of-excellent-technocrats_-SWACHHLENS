@@ -1,6 +1,7 @@
 import { query, getPool } from "./db.js";
 import { createPasswordHash, passwordMatches, calculatePriority } from "./utils.js";
 import { REPORT_STATUSES, ROLES } from "./constants.js";
+import { store } from "./store.js";
 
 const seedUsers = [
   { uid: "user-citizen", name: "Ananya Das", email: "citizen@swachhlens.app", phone: "+919876543210", role: ROLES.CITIZEN, ward_id: "ward-12", location_name: "Bhubaneswar, Unit 4" },
@@ -84,9 +85,9 @@ function buildTimeline(status, createdAtMs, rnd) {
     under_review: [REPORT_STATUSES.UNDER_REVIEW],
     assigned: [REPORT_STATUSES.UNDER_REVIEW, REPORT_STATUSES.ASSIGNED],
     en_route: [REPORT_STATUSES.UNDER_REVIEW, REPORT_STATUSES.ASSIGNED, REPORT_STATUSES.EN_ROUTE],
-    cleanup_in_progress: [REPORT_STATUSES.UNDER_REVIEW, REPORT_STATUSES.ASSIGNED, REPORT_STATUSES.EN_ROUTE, REPORT_STATUSES.IN_PROGRESS],
-    verification: [REPORT_STATUSES.UNDER_REVIEW, REPORT_STATUSES.ASSIGNED, REPORT_STATUSES.EN_ROUTE, REPORT_STATUSES.IN_PROGRESS, REPORT_STATUSES.VERIFICATION],
-    resolved: [REPORT_STATUSES.UNDER_REVIEW, REPORT_STATUSES.ASSIGNED, REPORT_STATUSES.EN_ROUTE, REPORT_STATUSES.IN_PROGRESS, REPORT_STATUSES.VERIFICATION, REPORT_STATUSES.RESOLVED],
+    cleanup_in_progress: [REPORT_STATUSES.UNDER_REVIEW, REPORT_STATUSES.ASSIGNED, REPORT_STATUSES.EN_ROUTE, REPORT_STATUSES.CLEANUP_IN_PROGRESS],
+    verification: [REPORT_STATUSES.UNDER_REVIEW, REPORT_STATUSES.ASSIGNED, REPORT_STATUSES.EN_ROUTE, REPORT_STATUSES.CLEANUP_IN_PROGRESS, REPORT_STATUSES.VERIFICATION],
+    resolved: [REPORT_STATUSES.UNDER_REVIEW, REPORT_STATUSES.ASSIGNED, REPORT_STATUSES.EN_ROUTE, REPORT_STATUSES.CLEANUP_IN_PROGRESS, REPORT_STATUSES.VERIFICATION, REPORT_STATUSES.RESOLVED],
     rejected: [REPORT_STATUSES.REJECTED],
     duplicate: [REPORT_STATUSES.DUPLICATE],
   }[status] || [];
@@ -398,5 +399,23 @@ export async function seedDatabase() {
     throw err;
   } finally {
     client.release();
+  }
+}
+
+export async function seedVehicles() {
+  try {
+    const existing = await query("SELECT COUNT(*) AS n FROM vehicles");
+    if (Number(existing.rows[0].n) > 0) return;
+    const seedVehicles = [
+      { id: "veh-01", teamId: "team-07", name: "Vehicle 01", vehicleType: "Mini Tipper", status: "collecting", latitude: 20.2978, longitude: 85.8265, label: "Ward 12 Depot", assignedArea: "Ward 12" },
+      { id: "veh-02", teamId: "team-03", name: "Vehicle 02", vehicleType: "Flatbed", status: "en_route", latitude: 20.3018, longitude: 85.8215, label: "Unit 1 Market", assignedArea: "Ward North" },
+      { id: "veh-03", teamId: "team-alpha", name: "Vehicle 03", vehicleType: "Mini Tipper", status: "collecting", latitude: 20.2961, longitude: 85.8245, label: "1420 Main St", assignedArea: "Ward 12" },
+    ];
+    for (const v of seedVehicles) {
+      await store.createVehicle(v);
+    }
+    console.log("Seed vehicles created.");
+  } catch (err) {
+    console.error("Vehicle seed error:", err.message);
   }
 }
