@@ -5,6 +5,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { initDatabase } from "./backend/db.js";
 import { seedDatabase, seedVehicles } from "./backend/seed-neon.js";
+import { store } from "./backend/store.js";
 import { handleApiRequest } from "./backend/router.js";
 import { subscribe as subscribeEvents } from "./backend/events.js";
 

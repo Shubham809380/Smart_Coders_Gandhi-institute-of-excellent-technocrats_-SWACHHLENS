@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { adminService } from "../../services.js";
+import { adminService, authService } from "../../services.js";
 import { useTheme } from "../../contexts/ThemeContext.jsx";
 import { Icon, Chip, relativeTime } from "./ui.jsx";
 import { useLive } from "../../hooks/useLive.js";
@@ -156,9 +156,15 @@ export default function AdminLayout({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [me, setMe] = useState(() => authService.getSessionSnapshot().currentUser);
   const title = PAGE_TITLES[location.pathname] || (location.pathname.startsWith("/admin/complaints/") ? "Complaint Detail" : "Admin");
 
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+
+  useEffect(() => {
+    const unsub = authService.subscribe((snap) => setMe(snap.currentUser));
+    return () => unsub?.();
+  }, []);
 
   return (
     <div className="min-h-screen" style={{ background: "var(--adm-bg)", color: "var(--adm-text)" }}>
@@ -202,10 +208,12 @@ export default function AdminLayout({ children }) {
         </nav>
         <div className="p-3 border-t adm-border-c shrink-0">
           <Link to="/profile" className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--adm-surface-2)] transition-colors">
-            <span className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-bold" style={{ background: "var(--adm-primary-strong)" }}>MA</span>
+            <span className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-bold" style={{ background: "var(--adm-primary-strong)" }}>
+              {(me?.name || "M").charAt(0).toUpperCase()}
+            </span>
             <span className="min-w-0">
-              <span className="block text-[13px] font-semibold truncate">Municipal Admin</span>
-              <span className="block text-[11px] truncate" style={{ color: "var(--adm-muted)" }}>admin@swachhlens.app</span>
+              <span className="block text-[13px] font-semibold truncate">{me?.name || "Municipal Admin"}</span>
+              <span className="block text-[11px] truncate" style={{ color: "var(--adm-muted)" }}>{me?.email || ""}</span>
             </span>
           </Link>
         </div>
