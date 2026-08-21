@@ -232,6 +232,7 @@ export function formatReportForClient(report) {
     escalatedAt: report.escalatedAt || null,
     recyclingStatus: report.recyclingStatus || "",
     recyclingPartner: report.recyclingPartner || "",
+    recyclingRoutedAt: report.recyclingRoutedAt || null,
     createdAt: report.createdAt,
     updatedAt: report.updatedAt,
     statusTimeline: report.statusTimeline || [],

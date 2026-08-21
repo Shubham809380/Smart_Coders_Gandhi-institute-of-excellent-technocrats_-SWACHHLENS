@@ -1,395 +1,407 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import AdminSidebar from "../../components/AdminSidebar.jsx";
-import { adminService, reportService, teamService } from "../../services.js";
-
-const STATUS_OPTIONS = [
-  { value: "submitted", label: "Submitted" },
-  { value: "ai_analyzed", label: "AI Analyzed" },
-  { value: "under_review", label: "Under Review" },
-  { value: "assigned", label: "Assigned" },
-  { value: "en_route", label: "En Route" },
-  { value: "cleanup_in_progress", label: "Cleanup In Progress" },
-  { value: "verification", label: "Verification" },
-  { value: "resolved", label: "Resolved" },
-  { value: "reopened", label: "Reopened" },
-];
-
-const STATUS_BADGE_COLORS = {
-  submitted: "bg-gray-100 text-gray-700 border-gray-200",
-  analyzing: "bg-blue-50 text-blue-600 border-blue-200",
-  ai_analyzed: "bg-blue-50 text-blue-600 border-blue-200",
-  analysis_failed: "bg-red-50 text-red-600 border-red-200",
-  duplicate: "bg-purple-50 text-purple-600 border-purple-200",
-  under_review: "bg-amber-50 text-amber-700 border-amber-200",
-  assigned: "bg-indigo-50 text-indigo-600 border-indigo-200",
-  en_route: "bg-cyan-50 text-cyan-700 border-cyan-200",
-  cleanup_in_progress: "bg-blue-50 text-blue-600 border-blue-200",
-  verification: "bg-purple-50 text-purple-600 border-purple-200",
-  resolved: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  reopened: "bg-red-50 text-red-600 border-red-200",
-};
-
-const SEVERITY_BADGE_COLORS = {
-  critical: "bg-red-500 text-white",
-  high: "bg-red-50 text-red-600 border border-red-200",
-  medium: "bg-amber-50 text-amber-700 border border-amber-200",
-  low: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-};
-
-function getPriorityColor(score) {
-  if (score < 45) return { bg: "bg-emerald-500", ring: "ring-emerald-200", text: "text-emerald-700", label: "Low" };
-  if (score < 75) return { bg: "bg-amber-500", ring: "ring-amber-200", text: "text-amber-700", label: "Medium" };
-  return { bg: "bg-red-500", ring: "ring-red-200", text: "text-red-700", label: "High" };
-}
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import AdminLayout from "../../components/admin/AdminLayout.jsx";
+import { PriorityRing, Chip, StatusChip, SeverityChip, Icon, Spinner, Skeleton, ErrorState, relativeTime, wasteTypeLabel, volumeLabel } from "../../components/admin/ui.jsx";
+import { adminService } from "../../services.js";
+import { useLive } from "../../hooks/useLive.js";
 
 function formatDate(dateStr) {
-  if (!dateStr) return "\u2014";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function formatShortTime(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  return d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-}
-
-export default function ComplaintDetail() {
-  const navigate = useNavigate();
-  const { reportId } = useParams();
-  const [report, setReport] = useState(null);
-  const [teams, setTeams] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [statusUpdating, setStatusUpdating] = useState(false);
-  const [assigningTeam, setAssigningTeam] = useState(null);
-
-  useEffect(() => { fetchData(); }, [reportId]);
-
-  const fetchData = async () => {
-    try {
-      const [reportData, teamData] = await Promise.all([
-        reportService.getReportById(reportId),
-        teamService.getTeams(),
-      ]);
-      setReport(reportData);
-      setTeams(teamData || []);
-    } catch (err) { console.error(err); }
-    setLoading(false);
-  };
-
-  const handleStatusChange = async (e) => {
-    const newStatus = e.target.value;
-    if (!newStatus || newStatus === report?.status) return;
-    setStatusUpdating(true);
-    try {
-      const updated = await reportService.updateReportStatus(reportId, newStatus);
-      setReport((prev) => ({ ...prev, ...updated }));
-    } catch (err) { console.error(err); }
-    setStatusUpdating(false);
-  };
-
-  const handleAssignTeam = async (teamId) => {
-    setAssigningTeam(teamId);
-    try { await teamService.assignTeam(reportId, teamId); await fetchData(); }
-    catch (err) { console.error(err); }
-    setAssigningTeam(null);
-  };
-
-  const pColor = getPriorityColor(report?.priorityScore ?? 0);
-  const timeline = report?.statusTimeline || [];
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen bg-background items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-[13px] text-on-surface-variant font-medium">Loading complaint...</span>
-        </div>
+function PriorityBreakdown({ breakdown }) {
+  if (!breakdown) return null;
+  const max = Math.max(1, ...breakdown.components.map((c) => c.points));
+  return (
+    <div className="adm-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-bold">Why this score</p>
+        <Chip tone={breakdown.level === "critical" || breakdown.level === "high" ? "danger" : breakdown.level === "medium" ? "warn" : "ok"}>
+          {breakdown.level} · {breakdown.score}/100
+        </Chip>
       </div>
-    );
-  }
+      <ul className="space-y-2">
+        {breakdown.components.map((c) => (
+          <li key={c.key} className="text-xs">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className={c.points > 0 ? "font-semibold adm-text" : "adm-muted"}>{c.label}</span>
+              <span className="font-bold tabular-nums" style={{ color: c.points > 0 ? "var(--adm-primary)" : "var(--adm-muted)" }}>+{c.points}</span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--adm-surface-2)" }}>
+              <div className="h-full rounded-full transition-all" style={{ width: `${(c.points / max) * 100}%`, background: c.points > 0 ? "var(--adm-primary)" : "var(--adm-border)" }} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
-  if (!report) {
+function AiVerifyPanel({ report, onDone }) {
+  const [state, setState] = useState(report.aiAfterAnalysis ? "done" : "idle");
+  const [analysis, setAnalysis] = useState(report.aiAfterAnalysis);
+  const [error, setError] = useState("");
+
+  const run = async () => {
+    setState("running");
+    setError("");
+    try {
+      const data = await adminService.verifyWithAI(report.id);
+      setAnalysis(data.analysis);
+      setState("done");
+      onDone?.();
+    } catch (err) {
+      setError(err.message || "AI verification failed.");
+      setState("idle");
+    }
+  };
+
+  if (!report.afterImage) {
     return (
-      <div className="flex min-h-screen bg-background items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <span className="material-symbols-outlined text-on-surface-variant/30 text-[48px]">error_outline</span>
-          <span className="text-[15px] font-bold text-on-surface-variant">Complaint not found</span>
-          <button onClick={() => navigate(-1)} className="mt-2 px-4 py-2 bg-primary text-white rounded-xl text-[13px] font-bold">Go Back</button>
-        </div>
+      <div className="adm-card p-4">
+        <p className="text-sm font-bold mb-1">AI cleanup verification</p>
+        <p className="text-xs adm-muted">Available once the field team submits an after-cleanup photo.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AdminSidebar active="complaints" />
-      <main className="ml-0 lg:ml-72 flex-1 pl-16 lg:pl-0 p-4 lg:p-8 pb-12">
+    <div className="adm-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold">AI cleanup verification</p>
+        {state === "done"
+          ? <Chip tone="ok" icon={<Icon name="check" size={11} />}>Analyzed</Chip>
+          : <button onClick={run} disabled={state === "running"} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold adm-btn-primary">
+              {state === "running" ? <Spinner size={12} /> : <Icon name="sparkles" size={13} />} Run AI check
+            </button>}
+      </div>
+      {error && <p className="text-xs" style={{ color: "var(--adm-danger)" }}>{error}</p>}
+      {state === "done" && analysis && (
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="rounded-lg p-2.5" style={{ background: "var(--adm-surface-2)" }}>
+            <p className="font-bold uppercase tracking-wider adm-muted text-[10px] mb-1">Before</p>
+            <p>{wasteTypeLabel(report.wasteType)}</p>
+            <p className="adm-muted">{volumeLabel(report.estimatedVolume)} · severity {report.severity}</p>
+          </div>
+          <div className="rounded-lg p-2.5" style={{ background: "rgba(22,163,74,0.08)" }}>
+            <p className="font-bold uppercase tracking-wider text-[10px] mb-1" style={{ color: "var(--adm-ok)" }}>After</p>
+            <p>{wasteTypeLabel(analysis.wasteType)}</p>
+            <p className="adm-muted">{volumeLabel(analysis.estimatedVolume)} · severity {analysis.severity}</p>
+            <p className="mt-1 font-semibold" style={{ color: analysis.severity === "low" ? "var(--adm-ok)" : "var(--adm-warn)" }}>
+              {analysis.severity === "low" ? "Cleanup looks effective" : "Residue may remain — recheck"}
+            </p>
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        {[["Before", report.beforeImage], ["After", report.afterImage]].map(([label, src]) => src && (
+          <figure key={label} className="rounded-lg overflow-hidden border adm-border-c">
+            <img src={src} alt={`${label} cleanup`} className="w-full h-36 object-cover" loading="lazy" />
+            <figcaption className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest adm-muted">{label}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function ComplaintDetail() {
+  const { reportId } = useParams();
+  const navigate = useNavigate();
+  const [report, setReport] = useState(null);
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+  const [toast, setToast] = useState("");
+  const [dupPrimaryId, setDupPrimaryId] = useState("");
+  const [dupMode, setDupMode] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [r, t] = await Promise.all([adminService.getComplaint(reportId), adminService.getTeamsWithLoad()]);
+      setReport(r);
+      setTeams(t);
+      setError("");
+    } catch (err) {
+      setError(err.message || "Failed to load complaint.");
+    } finally {
+      setLoading(false);
+    }
+  }, [reportId]);
+
+  useEffect(() => { setLoading(true); load(); }, [load]);
+
+  useLive((evt, payload) => {
+    if ((evt === "waste:updated" || evt === "waste:status:update") && payload?.id === reportId) {
+      setReport(payload);
+    }
+  }, ["waste:updated", "waste:status:update"], { pollMs: 45000, poll: load });
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3500); };
+
+  const act = async (name, fn) => {
+    setBusy(name);
+    try {
+      await fn();
+      await load();
+    } catch (err) {
+      showToast(err.message || "Action failed.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="space-y-4 max-w-6xl mx-auto">
+          <Skeleton h={40} />
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+            <div className="space-y-4"><Skeleton h={300} /><Skeleton h={180} /></div>
+            <div className="space-y-4"><Skeleton h={220} /><Skeleton h={260} /></div>
+          </div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (error || !report) {
+    return (
+      <AdminLayout>
+        <ErrorState message={error || "Complaint not found."} onRetry={() => { setLoading(true); load(); }} />
+      </AdminLayout>
+    );
+  }
+
+  const openTeams = teams.filter((t) => t.availability !== "off_duty");
+
+  return (
+    <AdminLayout>
+      <div className="max-w-6xl mx-auto space-y-4">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-surface hover:bg-surface-container transition-colors border border-black/[0.04] shrink-0">
-            <span className="material-symbols-outlined text-on-surface text-[20px]">arrow_back</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1 text-sm font-semibold adm-muted hover:underline">
+            <Icon name="chevronRight" size={14} className="rotate-180" /> Back
           </button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-[24px] font-extrabold text-on-surface tracking-tight">Complaint Detail</h1>
-            <p className="text-[13px] text-on-surface-variant font-medium">{report.id}</p>
+          <h2 className="text-xl font-extrabold tracking-tight">{report.id}</h2>
+          <StatusChip status={report.status} />
+          {report.escalated && <Chip tone="danger" icon={<Icon name="zap" size={11} />}>Escalated</Chip>}
+          {report.hazardFlag && <Chip tone="danger" icon={<Icon name="shieldAlert" size={11} />}>Hazard</Chip>}
+          {report.recyclableHeavy && <Chip tone="info" icon={<Icon name="recycle" size={11} />}>Recyclable</Chip>}
+          <div className="ml-auto flex items-center gap-2">
+            {!["resolved", "rejected", "duplicate"].includes(report.status) && !report.escalated && (
+              <button
+                onClick={() => act("escalate", () => adminService.escalateComplaint(report.id))}
+                disabled={busy === "escalate"}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold adm-btn-ghost"
+                style={{ color: "var(--adm-danger)" }}
+              >
+                {busy === "escalate" ? <Spinner size={12} /> : <Icon name="zap" size={13} />} Escalate
+              </button>
+            )}
+            <button
+              onClick={() => setDupMode(!dupMode)}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold adm-btn-ghost"
+            >
+              <Icon name="copy" size={13} /> Mark duplicate
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column */}
-          <div className="lg:col-span-8 flex flex-col gap-6">
-            {/* Image Section */}
-            {report.image && (
-              <div className="bg-surface rounded-2xl overflow-hidden shadow-sm border border-black/[0.03]">
-                {report.afterImage ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-0">
-                    <div className="relative">
-                      <img className="w-full aspect-video object-cover" alt="Before cleanup" src={report.image} />
-                      <span className="absolute top-3 left-3 px-3 py-1 bg-black/60 backdrop-blur-sm text-white text-[11px] font-extrabold uppercase tracking-wider rounded-lg">Before</span>
-                    </div>
-                    <div className="relative">
-                      <img className="w-full aspect-video object-cover" alt="After cleanup" src={report.afterImage} />
-                      <span className="absolute top-3 left-3 px-3 py-1 bg-emerald-600/80 backdrop-blur-sm text-white text-[11px] font-extrabold uppercase tracking-wider rounded-lg">After</span>
-                    </div>
-                  </div>
-                ) : (
-                  <img className="w-full max-h-96 object-cover" alt="Waste report" src={report.image} />
-                )}
-              </div>
-            )}
+        {dupMode && (
+          <div className="adm-card p-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold">Merge this complaint into primary:</span>
+            <input
+              value={dupPrimaryId}
+              onChange={(e) => setDupPrimaryId(e.target.value.toUpperCase())}
+              placeholder="REP-XXXXXXXX"
+              className="adm-input px-2.5 py-1.5 text-sm w-44 font-mono"
+            />
+            <button
+              onClick={() => act("dup", async () => { await adminService.markDuplicate(report.id, dupPrimaryId); setDupMode(false); showToast("Merged as duplicate."); })}
+              disabled={!dupPrimaryId || busy === "dup"}
+              className="rounded-lg px-3 py-1.5 text-xs font-bold adm-btn-primary inline-flex items-center gap-1.5"
+            >
+              {busy === "dup" ? <Spinner size={12} /> : <Icon name="merge" size={13} />} Confirm merge
+            </button>
+            <button onClick={() => setDupMode(false)} className="text-xs adm-muted hover:underline">Cancel</button>
+          </div>
+        )}
 
-            {/* Report Info Card */}
-            <div className="bg-surface rounded-2xl p-5 shadow-sm border border-black/[0.03]">
-              <div className="flex items-center gap-2 mb-5">
-                <span className="material-symbols-outlined text-primary text-[20px]">description</span>
-                <h2 className="text-[16px] font-extrabold text-on-surface">Report Information</h2>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Report ID</span>
-                  <span className="text-[14px] font-bold text-on-surface">{report.id}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Status</span>
-                  <span className={`inline-flex self-start px-2.5 py-1 rounded-lg text-[11px] font-extrabold uppercase tracking-wider border ${STATUS_BADGE_COLORS[report.status] || "bg-gray-100 text-gray-600 border-gray-200"}`}>
-                    {report.status?.replace(/_/g, " ")}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Created</span>
-                  <span className="text-[14px] text-on-surface flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[16px] text-on-surface-variant">schedule</span>
-                    {formatDate(report.createdAt)}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Waste Type</span>
-                  <span className="text-[14px] font-bold text-on-surface capitalize">{report.wasteType?.replace(/_/g, " ") || "\u2014"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Volume</span>
-                  <span className="text-[14px] text-on-surface">{report.estimatedVolume || "\u2014"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Severity</span>
-                  <span className={`inline-flex self-start px-2.5 py-1 rounded-lg text-[11px] font-extrabold uppercase tracking-wider ${SEVERITY_BADGE_COLORS[report.severity] || "bg-gray-100 text-gray-600"}`}>
-                    {report.severity || "\u2014"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">AI Confidence</span>
-                  <span className="text-[14px] font-bold text-on-surface">{report.aiConfidence ? `${report.aiConfidence}%` : "\u2014"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Location</span>
-                  <span className="text-[14px] text-on-surface flex items-start gap-1.5">
-                    <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-0.5 shrink-0">location_on</span>
-                    <span>{report.address || "\u2014"}</span>
-                  </span>
-                </div>
-              </div>
-              {report.comment && (
-                <div className="mt-4 pt-4 border-t border-surface-container-high">
-                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block mb-2">Citizen Comment</span>
-                  <div className="bg-surface-container rounded-xl p-3 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-primary/40" />
-                    <p className="text-[14px] text-on-surface-variant italic pl-3 leading-relaxed">&ldquo;{report.comment}&rdquo;</p>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 items-start">
+          {/* Left column */}
+          <div className="space-y-4">
+            {/* Photos */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <figure className="adm-card overflow-hidden">
+                <img src={report.beforeImage} alt="Before cleanup" className="w-full h-64 object-cover" />
+                <figcaption className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest adm-muted">Reported photo</figcaption>
+              </figure>
+              <figure className="adm-card overflow-hidden">
+                {report.afterImage ? (
+                  <img src={report.afterImage} alt="After cleanup" className="w-full h-64 object-cover" />
+                ) : (
+                  <div className="w-full h-64 flex flex-col items-center justify-center adm-raised-bg adm-muted gap-2">
+                    <Icon name="eye" size={22} />
+                    <span className="text-xs">Awaiting after-cleanup photo</span>
                   </div>
-                </div>
-              )}
+                )}
+                <figcaption className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest adm-muted">After cleanup</figcaption>
+              </figure>
             </div>
 
-            {/* AI Analysis Card */}
-            <div className="bg-surface rounded-2xl p-5 shadow-sm border border-black/[0.03]">
-              <div className="flex items-center gap-2 mb-5">
-                <span className="material-symbols-outlined text-cyan-600 text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                <h2 className="text-[16px] font-extrabold text-on-surface">AI Analysis</h2>
+            {/* AI analysis */}
+            <div className="adm-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-bold flex items-center gap-1.5"><Icon name="sparkles" size={15} /> AI Analysis</p>
+                <Chip tone="info">{report.aiConfidence}% confidence</Chip>
               </div>
-              <div className="flex items-center gap-4 mb-5">
-                <div className="relative flex items-center justify-center w-16 h-16">
-                  <div className={`absolute inset-0 rounded-full ${pColor.bg} opacity-15`} />
-                  <div className={`absolute inset-1 rounded-full ring-4 ${pColor.ring} bg-surface`} />
-                  <span className={`relative text-[22px] font-extrabold ${pColor.text}`}>{report.priorityScore ?? "\u2014"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold uppercase tracking-wider self-start ${pColor.bg} text-white`}>
-                    {pColor.label} Priority
-                  </span>
-                  <span className="text-[12px] text-on-surface-variant font-medium">Priority Score</span>
-                </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                {[
+                  ["Waste type", wasteTypeLabel(report.wasteType)],
+                  ["Volume", `${volumeLabel(report.estimatedVolume)}${report.estimatedVolumeRange ? ` (${report.estimatedVolumeRange})` : ""}`],
+                  ["Severity", report.severity],
+                  ["Location", report.address || "—"],
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-lg p-2.5" style={{ background: "var(--adm-surface-2)" }}>
+                    <p className="text-[10px] font-bold uppercase tracking-widest adm-muted mb-0.5">{k}</p>
+                    <p className="font-semibold capitalize">{v}</p>
+                  </div>
+                ))}
               </div>
-
-              {report.priorityReasons && report.priorityReasons.length > 0 && (
-                <div className="mb-4">
-                  <h3 className="text-[11px] font-extrabold text-on-surface-variant uppercase tracking-wider mb-2">Priority Reasons</h3>
-                  <div className="flex flex-col gap-2">
-                    {report.priorityReasons.map((reason, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 bg-surface-container rounded-xl">
-                        <span className="material-symbols-outlined text-cyan-600 mt-0.5 text-[18px]">science</span>
-                        <span className="text-[13px] text-on-surface-variant leading-relaxed">{reason}</span>
-                      </div>
+              {(report.potentialRisk || report.recommendation) && (
+                <div className="mt-3 space-y-2 text-xs">
+                  {report.potentialRisk && (
+                    <p><span className="font-bold adm-muted uppercase text-[10px] tracking-widest mr-2">Risks</span>{report.potentialRisk}</p>
+                  )}
+                  {report.recommendation && (
+                    <p><span className="font-bold adm-muted uppercase text-[10px] tracking-widest mr-2">Recommendation</span>{report.recommendation}</p>
+                  )}
+                </div>
+              )}
+              {report.detectionSummary?.objects?.length > 0 && (
+                <div className="mt-3 pt-3 border-t adm-border-c">
+                  <p className="text-[10px] font-bold uppercase tracking-widest adm-muted mb-1.5">Detected objects ({report.detectionSummary.model || "vision model"})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {report.detectionSummary.objects.map((o, i) => (
+                      <Chip key={`${o.label}-${i}`} tone="outline">{o.label} · ~{o.approxAreaPct}% area</Chip>
                     ))}
                   </div>
                 </div>
               )}
-
-              {report.potentialRisk && (
-                <div className="mb-4">
-                  <h3 className="text-[11px] font-extrabold text-on-surface-variant uppercase tracking-wider mb-2">Potential Risks</h3>
-                  <p className="text-[14px] text-on-surface-variant leading-relaxed bg-red-50/60 p-3 rounded-xl border border-red-100">{report.potentialRisk}</p>
-                </div>
-              )}
-
-              {report.recommendation && (
-                <div>
-                  <h3 className="text-[11px] font-extrabold text-on-surface-variant uppercase tracking-wider mb-2">AI Recommendation</h3>
-                  <p className="text-[14px] text-on-surface-variant leading-relaxed bg-emerald-50/60 p-3 rounded-xl border border-emerald-100">{report.recommendation}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Column */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
-            {/* Status Change */}
-            <div className="bg-surface rounded-2xl p-5 shadow-sm border border-black/[0.03]">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-primary text-[20px]">swap_horiz</span>
-                <h2 className="text-[16px] font-extrabold text-on-surface">Change Status</h2>
-              </div>
-              <div className="relative">
-                <select
-                  value={report.status || ""}
-                  onChange={handleStatusChange}
-                  disabled={statusUpdating}
-                  className="w-full appearance-none bg-surface-container border border-surface-container-high rounded-xl px-4 py-3 pr-10 text-[14px] font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 cursor-pointer"
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant text-[20px] pointer-events-none">expand_more</span>
-              </div>
-              {statusUpdating && (
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  <span className="text-[12px] text-on-surface-variant font-medium">Updating status...</span>
-                </div>
-              )}
             </div>
 
-            {/* Assign Team */}
-            <div className="bg-surface rounded-2xl p-5 shadow-sm border border-black/[0.03]">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-primary text-[20px]">group</span>
-                <h2 className="text-[16px] font-extrabold text-on-surface">Assign Team</h2>
+            {/* Citizen comment */}
+            {report.comment && (
+              <div className="adm-card p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest adm-muted mb-1">Citizen note</p>
+                <p className="text-sm">“{report.comment}”</p>
               </div>
-              <div className="flex flex-col gap-2.5 max-h-80 overflow-y-auto">
-                {teams.length === 0 && (
-                  <div className="text-center py-6">
-                    <span className="material-symbols-outlined text-on-surface-variant/30 text-[32px] block mb-2">group_off</span>
-                    <span className="text-[13px] text-on-surface-variant font-medium">No teams available</span>
+            )}
+
+            <AiVerifyPanel report={report} onDone={load} />
+
+            {/* Recycling routing */}
+            {report.recyclableHeavy && (
+              <div className="adm-card p-4">
+                <p className="text-sm font-bold flex items-center gap-1.5 mb-2"><Icon name="recycle" size={15} /> Recycling routing</p>
+                {report.recyclingStatus === "routed" ? (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Chip tone="ok" dot>Routed</Chip>
+                    <span><b>{report.recyclingPartner}</b> · since {formatDate(report.recyclingRoutedAt)}</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {["GreenCycle Pvt Ltd", "EcoWaste Processors", "ReMaterial Hub"].map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => act(`recycle-${p}`, () => adminService.routeToRecycler(report.id, p))}
+                        disabled={Boolean(busy)}
+                        className="rounded-lg px-3 py-1.5 text-xs font-bold adm-btn-ghost"
+                      >
+                        {busy === `recycle-${p}` ? <Spinner size={12} /> : p}
+                      </button>
+                    ))}
                   </div>
                 )}
-                {teams.map((team) => {
-                  const isAvailable = team.status === "available";
-                  const isAssigned = assigningTeam === team.id;
-                  return (
-                    <div key={team.id} className={`p-3.5 rounded-xl border transition-all ${isAvailable ? "bg-surface-container-low border-black/[0.04] hover:shadow-sm" : "bg-surface-container/50 border-black/[0.03] opacity-60"}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${isAvailable ? "bg-primary/10" : "bg-surface-container-highest"}`}>
-                            <span className={`material-symbols-outlined text-[18px] ${isAvailable ? "text-primary" : "text-on-surface-variant/50"}`}>local_shipping</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[13px] font-bold text-on-surface">{team.name}</span>
-                            <span className="text-[11px] text-on-surface-variant">{team.vehicle || "\u2014"}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1.5">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${isAvailable ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
-                            {team.status || "unknown"}
-                          </span>
-                          {isAvailable && (
-                            <button
-                              onClick={() => handleAssignTeam(team.id)}
-                              disabled={assigningTeam !== null}
-                              className="bg-primary text-white px-3 py-1.5 rounded-lg text-[12px] font-bold shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-1"
-                            >
-                              {isAssigned ? (
-                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <span className="material-symbols-outlined text-[14px]">send</span>
-                              )}
-                              {isAssigned ? "..." : "Assign"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
+            )}
+          </div>
+
+          {/* Right column */}
+          <div className="space-y-4">
+            <PriorityBreakdown breakdown={report.priorityBreakdown} />
+
+            {/* Dispatch */}
+            {!["resolved", "rejected", "duplicate"].includes(report.status) && (
+              <div className="adm-card p-4">
+                <p className="text-sm font-bold mb-2.5">Dispatch</p>
+                {report.assignedTeam ? (
+                  <div className="flex items-center justify-between text-xs">
+                    <span>Assigned to <b>{report.assignedTeam}</b></span>
+                    <Chip tone="info" dot>Active</Chip>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {openTeams.length === 0 && <p className="text-xs adm-muted">No teams available.</p>}
+                    {openTeams.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => act(`assign-${t.id}`, () => adminService.assignComplaint(report.id, t.id))}
+                        disabled={Boolean(busy)}
+                        className="w-full text-left rounded-lg px-3 py-2 border adm-border-c hover:bg-[var(--adm-surface-2)] transition-colors flex items-center justify-between gap-2"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-xs font-bold truncate">{t.name}</span>
+                          <span className="block text-[10px] adm-muted">{t.vehicleType || "—"} · ETA {t.etaMinutes ?? "?"}m</span>
+                        </span>
+                        {busy === `assign-${t.id}` ? <Spinner size={13} /> : <Chip tone={t.activeTasks >= 4 ? "warn" : "ok"}>{t.activeTasks} open</Chip>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Timeline */}
+            <div className="adm-card p-4">
+              <p className="text-sm font-bold mb-3">Timeline</p>
+              <ol className="relative ml-1.5 border-l adm-border-c space-y-3.5">
+                {(report.statusTimeline || []).map((step, i) => (
+                  <li key={`${step.status}-${i}`} className="pl-4 relative">
+                    <span className="absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full border-2" style={{ background: i === (report.statusTimeline.length - 1) ? "var(--adm-primary)" : "var(--adm-border)", borderColor: "var(--adm-surface)" }} />
+                    <p className="text-xs font-bold capitalize">{String(step.status).replace(/_/g, " ")}</p>
+                    <p className="text-[10px] adm-muted">{formatDate(step.at)}</p>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-3 pt-3 border-t adm-border-c text-[10px] adm-muted">
+                Reported {relativeTime(report.createdAt)} · last update {relativeTime(report.updatedAt)}
+              </p>
             </div>
 
-            {/* Status Timeline */}
-            <div className="bg-surface rounded-2xl p-5 shadow-sm border border-black/[0.03]">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-primary text-[20px]">timeline</span>
-                <h2 className="text-[16px] font-extrabold text-on-surface">Status Timeline</h2>
-              </div>
-              {timeline.length === 0 ? (
-                <div className="text-center py-6">
-                  <span className="material-symbols-outlined text-on-surface-variant/30 text-[32px] block mb-2">history</span>
-                  <span className="text-[13px] text-on-surface-variant font-medium">No timeline data</span>
-                </div>
-              ) : (
-                <div className="flex flex-col">
-                  {timeline.map((entry, i) => {
-                    const isLast = i === timeline.length - 1;
-                    return (
-                      <div key={i} className="flex gap-3">
-                        <div className="flex flex-col items-center">
-                          <div className={`w-3 h-3 rounded-full shrink-0 ${isLast ? "bg-primary ring-4 ring-primary/15" : "bg-surface-container-highest"}`} />
-                          {!isLast && <div className="w-px flex-1 bg-surface-container-highest my-1" />}
-                        </div>
-                        <div className={isLast ? "pb-0" : "pb-5"}>
-                          <span className={`text-[13px] font-bold capitalize ${isLast ? "text-primary" : "text-on-surface"}`}>
-                            {entry.status?.replace(/_/g, " ")}
-                          </span>
-                          <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">{formatShortTime(entry.at)}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+            {/* Meta */}
+            <div className="adm-card p-4 text-xs space-y-1.5">
+              <p className="flex justify-between"><span className="adm-muted">Complaint ID</span><button onClick={() => navigator.clipboard?.writeText(report.id)} className="font-mono font-bold hover:underline" title="Copy">{report.id} <Icon name="copy" size={11} className="inline" /></button></p>
+              <p className="flex justify-between"><span className="adm-muted">Coordinates</span><span className="font-mono">{Number(report.latitude).toFixed(5)}, {Number(report.longitude).toFixed(5)}</span></p>
+              <p className="flex justify-between"><span className="adm-muted">Ward</span><span className="font-semibold">{report.wardId || "—"}</span></p>
+              {report.duplicate?.isPotentialDuplicate && (
+                <p className="flex justify-between"><span className="adm-muted">Duplicate of</span>
+                  <Link to={`/admin/complaints/${report.duplicate.primaryReportId}`} className="font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>{report.duplicate.primaryReportId || "—"}</Link>
+                </p>
               )}
             </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 adm-card px-4 py-3 text-sm font-semibold adm-text animate-slideUp" style={{ boxShadow: "var(--shadow-xl)", borderLeft: "3px solid var(--adm-danger)" }}>
+          {toast}
+        </div>
+      )}
+    </AdminLayout>
   );
 }
