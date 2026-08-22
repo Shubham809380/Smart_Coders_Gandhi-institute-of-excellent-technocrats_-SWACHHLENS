@@ -1,6 +1,7 @@
 ﻿import { ROLES, ADMIN_ROLES, REPORT_STATUSES, PRIORITY_WEIGHTS } from "./constants.js";
 import { getAIProvider, MockAIProvider } from "./ai/provider.js";
 import { verifyCleanupCompletion, detectBinType } from "./ai/geminiVerifier.js";
+import { checkWasteImage } from "./ai/wasteGatekeeper.js";
 import { getBinGuidance } from "./binMapping.js";
 import { store } from "./store.js";
 import { publish } from "./events.js";
