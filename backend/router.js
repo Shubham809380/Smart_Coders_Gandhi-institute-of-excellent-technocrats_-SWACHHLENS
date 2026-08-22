@@ -362,6 +362,28 @@ export async function handleApiRequest(req, res) {
       if (body.image.length > 10 * 1024 * 1024) {
         return json(res, 400, { error: { code: "IMAGE_TOO_LARGE", message: "Image is too large. Please capture a smaller photo." } });
       }
+      // Gemini gatekeeper pre-check: reject photos that clearly contain no waste
+      // before the YOLO/volume/severity pipeline runs. Fails open on any error.
+      let lowImageWarning = "";
+      try {
+        const gate = await checkWasteImage({ image: body.image });
+        if (gate.checked && !gate.isWaste) {
+          console.log(`[AI] Gate rejected non-waste image (${gate.confidence}): ${gate.reason}`);
+          return json(res, 200, {
+            valid_waste_image: false,
+            reason: gate.reason || "No waste is visible in this photo.",
+            message: "We couldn't detect any waste in this photo. Please retake a clear photo of the waste you'd like to report.",
+          });
+        }
+        if (gate.checked && gate.isWaste && gate.confidence === "low") {
+          lowImageWarning = "This photo isn't very clear — please make sure the waste is fully visible.";
+          console.log(`[AI] Gate passed with low confidence, soft warning attached.`);
+        } else if (gate.checked) {
+          console.log(`[AI] Gate passed (${gate.confidence}${gate.cached ? ", cached" : ""}).`);
+        }
+      } catch (gateErr) {
+        console.warn("[AI] Gate skipped (fail-open):", gateErr.message);
+      }
       let analysis;
       try {
         analysis = await aiProvider.analyzeWaste(body);
@@ -394,6 +416,7 @@ export async function handleApiRequest(req, res) {
           detectionSummary: analysis.detectionSummary || null,
           processingTime: analysis.processingTime || null,
           models: analysis.models || null,
+          imageWarning: lowImageWarning || null,
         },
         duplicateMatch: duplicate.isPotentialDuplicate ? { reportId: duplicate.primaryReportId, distance: `${duplicate.distanceMeters}m away`, status: "Possible duplicate" } : null,
       });

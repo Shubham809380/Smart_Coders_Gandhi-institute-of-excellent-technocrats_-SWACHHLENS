@@ -64,6 +64,7 @@ export default function AIResults() {
       recommendation: ai.recommendation || '', duplicateReportExists: Boolean(draft.duplicateMatch),
       detectionSummary: ai.detectionSummary || null, dispatch: ai.dispatch || null,
       processingTime: ai.processingTime || null, models: ai.models || null,
+      imageWarning: ai.imageWarning || '',
     };
   }, [routeState, draft]);
   const reportData = useMemo(() => {
@@ -141,6 +142,16 @@ export default function AIResults() {
 
       {/* ─── Scrollable content ─── */}
       <Box sx={{ flex:1, overflowY:'auto', pb:'120px', position:'relative' }}>
+
+        {/* Low-confidence image soft warning (gatekeeper) */}
+        {analysis.imageWarning && phase !== 'scan' && (
+          <Box sx={{ mx:2, mt:2, display:'flex', gap:1.5, alignItems:'flex-start', px:1.75, py:1.5, borderRadius:2,
+            bgcolor: isDark ? 'rgba(255,179,0,0.08)' : 'rgba(255,179,0,0.14)',
+            border:'1px solid rgba(255,179,0,0.4)', animation: rm ? 'none' : `${fadeIn} 0.4s ease` }}>
+            <span className="material-symbols-outlined" style={{ fontSize:18, color:'#D48806', fontVariationSettings:"'FILL' 1" }}>warning_amber</span>
+            <span style={{ fontSize:12, lineHeight:1.55, color:T.text }}>{analysis.imageWarning}</span>
+          </Box>
+        )}
 
         {/* Scan overlay */}
         {!rm && phase === 'scan' && (

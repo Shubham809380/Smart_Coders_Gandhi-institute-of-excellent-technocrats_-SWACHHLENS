@@ -13,6 +13,8 @@ import {
   Replay as RetryIcon,
   ArrowBack as BackIcon,
   Cancel as CancelIcon,
+  NoPhotography as NoPhotoIcon,
+  PhotoCamera as RetakeIcon,
 } from "@mui/icons-material";
 import { aiService, reportService } from "../../services.js";
 
@@ -60,6 +62,7 @@ export default function AnalyzingWaste() {
   const [currentStep, setCurrentStep] = useState(-1);
   const [error, setError] = useState("");
   const [completed, setCompleted] = useState(false);
+  const [rejected, setRejected] = useState(null);
   const draft = reportService.getDraft();
   const progress = completed ? 100 : Math.max(0, ((currentStep + 1) / STEPS.length) * 100);
   const runAnalysis = useCallback(async (cancelled) => {
@@ -77,6 +80,11 @@ export default function AnalyzingWaste() {
         },
       });
       if (cancelled.current) return;
+      // Gemini gatekeeper: photo clearly contains no waste — block submission.
+      if (result.valid_waste_image === false) {
+        setRejected({ reason: result.reason || "", message: result.message || "We couldn't detect any waste in this photo. Please retake a clear photo of the waste you'd like to report." });
+        return;
+      }
       setCurrentStep(STEPS.length - 1);
       reportService.updateDraft({ aiResult: result.result, duplicateMatch: result.duplicateMatch });
       setCompleted(true);
@@ -121,6 +129,30 @@ export default function AnalyzingWaste() {
           </Box>
           <Box component="button" onClick={() => navigate("/report-waste")} sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, width: "100%", py: 2.25, borderRadius: 3, bgcolor: "grey.100", color: "text.primary", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer", transition: "all 0.2s", "&:active": { transform: "scale(0.98)" } }}>
             <BackIcon fontSize="small" /> Go Back
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (rejected) {
+    return (
+      <Box sx={{ minHeight: "100vh", bgcolor: "background.default", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", px: 3, animation: `${fadeInUp} 0.4s ease` }}>
+        <Box sx={{ width: 88, height: 88, borderRadius: "50%", bgcolor: "rgba(255,152,0,0.12)", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
+          <NoPhotoIcon sx={{ fontSize: 42, color: "#ED6C02" }} />
+        </Box>
+        <Typography variant="h6" fontWeight={700} textAlign="center" gutterBottom>Not a Waste Photo</Typography>
+        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ maxWidth: { xs: 280, sm: 360 }, mb: 1.5 }}>{rejected.message}</Typography>
+        {rejected.reason && (
+          <Typography variant="caption" color="text.disabled" textAlign="center" sx={{ maxWidth: { xs: 280, sm: 340 }, mb: 4, fontStyle: "italic" }}>AI: {rejected.reason}</Typography>
+        )}
+        {!rejected.reason && <Box sx={{ height: 32 }} />}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, width: "100%", maxWidth: { xs: 280, sm: 360 } }}>
+          <Box component="button" onClick={() => { reportService.updateDraft({ image: "", video: "", aiResult: null, duplicateMatch: null }); navigate("/report-waste"); }} sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, width: "100%", py: 2.25, borderRadius: 3, bgcolor: "primary.main", color: "white", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer", transition: "all 0.2s", boxShadow: "0 8px 24px -4px rgba(0,107,44,0.3)", "&:hover": { transform: "translateY(-1px)" }, "&:active": { transform: "scale(0.98)" } }}>
+            <RetakeIcon fontSize="small" /> Retake Photo
+          </Box>
+          <Box component="button" onClick={() => navigate("/home")} sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, width: "100%", py: 2.25, borderRadius: 3, bgcolor: "grey.100", color: "text.primary", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer", transition: "all 0.2s", "&:active": { transform: "scale(0.98)" } }}>
+            <BackIcon fontSize="small" /> Cancel Report
           </Box>
         </Box>
       </Box>
