@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import logo from "../logo.svg";
+import { authService } from "../services.js";
 
 const PERMISSIONS = [
   {
@@ -112,6 +113,12 @@ export default function PermissionFlow() {
     const status = await current.request();
     setResults((prev) => ({ ...prev, [current.id]: status }));
     setRequesting(false);
+
+    // Notification permission granted while already signed in? Register the
+    // Web Push subscription right away (normally it happens after login).
+    if (current.id === "notifications" && status === "granted") {
+      try { authService.refreshPushSubscription(); } catch { /* pre-login: skipped */ }
+    }
 
     setTimeout(() => {
       if (isLast) {
