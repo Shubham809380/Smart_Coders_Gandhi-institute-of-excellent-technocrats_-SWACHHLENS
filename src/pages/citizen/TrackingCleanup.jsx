@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { reportService, teamService } from '../../services.js';
 import GoogleMap from '../../components/GoogleMap.jsx';
 import { useTheme } from '../../contexts/ThemeContext.jsx';
-import { Box, IconButton, keyframes } from '@mui/material';
+import { Box, IconButton, Button, keyframes } from '@mui/material';
 import { ArrowBack as BackIcon, Home as HomeIcon } from '@mui/icons-material';
 
 const TIMELINE_STEPS = [
@@ -57,12 +57,15 @@ export default function TrackingCleanup() {
   const [report, setReport] = useState(null);
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [displayAddress, setDisplayAddress] = useState('');
   const [addressExpanded, setAddressExpanded] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const pollRef = useRef(null);
 
-  const reportId = location.state?.reportId;
+  // Accept the report id from navigation state (in-app taps) or ?reportId=
+  // query param (direct links, page refresh — state survives neither).
+  const reportId = location.state?.reportId || new URLSearchParams(location.search).get('reportId');
   const T = isDark
     ? { canvas:'#0B1220', surface:'#161B26', glass:'rgba(22,27,38,0.7)', border:'#232A3A', text:'#E8ECF1', muted:'#8791A3', accent:'#4C8DFF',
         sevLow:'#34C77B', sevMed:'#F5A623', sevHigh:'#E5484D' }
@@ -75,20 +78,23 @@ export default function TrackingCleanup() {
       const d = await reportService.getReportById(reportId);
       if (d) {
         setReport(d);
+        setNotFound(false);
         if (d.assignedTeam) { try { const teams = await teamService.getTeams(); const m = teams.find(t=>t.id===d.assignedTeam); if(m) setTeam(m); } catch {} }
         if (d.latitude && d.longitude && !d.address) { const a = await reverseGeocode(d.latitude, d.longitude); if(a) setDisplayAddress(a); }
         else if (d.address) setDisplayAddress(d.address);
+      } else {
+        setNotFound(true);
       }
-    } catch(e) { console.error('Fetch report error:', e); }
+    } catch(e) { console.error('Fetch report error:', e); setNotFound(true); }
     setLoading(false);
   }, [reportId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => {
-    if (!reportId || report?.status === 'resolved') return;
+    if (!reportId || notFound || report?.status === 'resolved') return;
     pollRef.current = setInterval(fetchData, 5000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [reportId, report?.status, fetchData]);
+  }, [reportId, notFound, report?.status, fetchData]);
   useEffect(() => { if (!loading && report) { const t = setTimeout(() => setLoaded(true), rm?0:100); return () => clearTimeout(t); } }, [loading, report]);
 
   const currentStatus = report?.status || 'submitted';
@@ -114,6 +120,41 @@ export default function TrackingCleanup() {
   }
 
   const sevColor = report?.severity === 'low' ? T.sevLow : report?.severity === 'medium' ? T.sevMed : report?.severity === 'high' || report?.severity === 'critical' ? T.sevHigh : T.muted;
+
+  // Missing id or unresolvable report → friendly empty state, never a blank page.
+  if (!loading && (!reportId || notFound || !report)) {
+    return (
+      <Box sx={{ minHeight:'100vh', bgcolor:T.canvas, display:'flex', alignItems:'center', justifyContent:'center', px:2.5,
+        fontFamily:'"Inter",sans-serif', transition:'background-color 0.25s ease' }}>
+        <Box sx={{ textAlign:'center', maxWidth:340, mx:'auto',
+          bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+          border:`1px solid ${T.border}`, borderRadius:2, p:4, width:'100%' }}>
+          <Box sx={{ width:64, height:64, borderRadius:'50%', bgcolor:`${T.accent}15`, display:'flex', alignItems:'center', justifyContent:'center', mx:'auto', mb:2.5 }}>
+            <span className="material-symbols-outlined" style={{ fontSize:32, color:T.accent }}>search_off</span>
+          </Box>
+          <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:18, color:T.text, display:'block', mb:1 }}>Report Not Found</span>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:13, color:T.muted, lineHeight:1.7, margin:'0 0 20px' }}>
+            {reportId
+              ? "We couldn't find this report. It may have been removed, or the tracking link is invalid."
+              : "We couldn't find a report associated with this tracking link."}
+          </p>
+          <Button variant="contained" fullWidth onClick={() => navigate('/home')}
+            sx={{ height:48, borderRadius:2, textTransform:'none', fontWeight:700, fontSize:14,
+              fontFamily:'"Space Grotesk",sans-serif', bgcolor:T.sevLow,
+              '&:hover': { bgcolor:T.sevLow },
+              '&:focus-visible': { outline:`2px solid ${T.accent}`, outlineOffset:2 } }}>
+            Back to Home
+          </Button>
+          <Button variant="outlined" fullWidth onClick={() => navigate('/my-reports')}
+            sx={{ mt:1.5, height:48, borderRadius:2, textTransform:'none', fontWeight:700, fontSize:14,
+              fontFamily:'"Space Grotesk",sans-serif', borderColor:T.border, color:T.muted,
+              '&:hover': { borderColor:T.muted, bgcolor: isDark ? 'rgba(135,145,163,0.08)' : 'rgba(91,100,114,0.06)' } }}>
+            View My Reports
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight:'100vh', bgcolor:T.canvas, display:'flex', flexDirection:'column', fontFamily:'"Inter",sans-serif',
