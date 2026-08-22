@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { io } from "socket.io-client";
 import { getPool } from "./backend/db.js";
 
