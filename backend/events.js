@@ -7,6 +7,8 @@
 // (SOCKET_INTERNAL_URL + INTERNAL_API_SECRET). Locally, or when the variable
 // is unset, only the SSE hub below is used.
 
+import { waitUntil } from "@vercel/functions";
+
 const clients = new Set();
 
 const FORWARD_URL = String(process.env.SOCKET_INTERNAL_URL || "");
@@ -20,7 +22,7 @@ function forwardToSocketServer(event, payload) {
   if (!FORWARD_URL || !INTERNAL_SECRET) return;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
-  fetch(FORWARD_URL, {
+  const request = fetch(FORWARD_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-internal-secret": INTERNAL_SECRET },
     body: JSON.stringify({ event, payload }),
@@ -40,6 +42,10 @@ function forwardToSocketServer(event, payload) {
       }
     })
     .finally(() => clearTimeout(timer));
+  // Serverless runtimes freeze the function once the response is sent; without
+  // waitUntil this fetch would be aborted mid-flight. Outside Vercel (local
+  // node server) waitUntil is a no-op / throws — fire-and-forget still works.
+  try { waitUntil(request); } catch { /* long-lived process: nothing needed */ }
 }
 
 export function subscribe(req, res) {
