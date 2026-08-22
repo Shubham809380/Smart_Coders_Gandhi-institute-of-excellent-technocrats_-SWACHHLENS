@@ -30,8 +30,13 @@ CLUSTER_MIN_SAMPLES = int(os.getenv("CLUSTER_MIN_SAMPLES", "3"))
 # GPU
 DEVICE = os.getenv("DEVICE", "cuda" if os.getenv("USE_CUDA", "false").lower() == "true" else "cpu")
 
-# Waste categories
+# Waste categories - operational taxonomy.
+# The 8 legacy categories are unchanged; *_waste entries below are produced by
+# the trained CNN classifier (paper/cardboard/metal/glass/textile) and are safe
+# everywhere: severity/dispatch fall back to defaults for unknown types and the
+# frontend label/icon maps include them.
 WASTE_CATEGORIES = [
     "overflowing_bin", "garbage_dump", "plastic_waste", "construction_debris",
-    "organic_waste", "e_waste", "hazardous_waste", "drain_blockage"
+    "organic_waste", "e_waste", "hazardous_waste", "drain_blockage",
+    "paper_waste", "cardboard_waste", "metal_waste", "glass_waste", "textile_waste",
 ]

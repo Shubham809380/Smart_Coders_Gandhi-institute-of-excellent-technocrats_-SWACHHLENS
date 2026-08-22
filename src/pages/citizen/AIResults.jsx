@@ -8,12 +8,16 @@ import { useTheme } from '../../contexts/ThemeContext.jsx';
 const WASTE_ICONS = {
   overflowing_bin: 'delete', garbage_dump: 'delete_sweep', plastic_waste: 'recycling',
   organic_waste: 'compost', construction_debris: 'construction', e_waste: 'devices_other',
-  hazardous_waste: 'skull', drain_blockage: 'water_drop', other: 'inventory_2',
+  hazardous_waste: 'skull', drain_blockage: 'water_drop',
+  paper_waste: 'description', cardboard_waste: 'package_2', metal_waste: 'hardware',
+  glass_waste: 'wine_bar', textile_waste: 'checkroom', other: 'inventory_2',
 };
 const WASTE_LABELS = {
   overflowing_bin: 'Overflowing Bin', garbage_dump: 'Garbage Dump', plastic_waste: 'Plastic Waste',
   organic_waste: 'Organic Waste', construction_debris: 'Construction Debris', e_waste: 'E-Waste',
-  hazardous_waste: 'Hazardous Waste', drain_blockage: 'Drain Blockage', other: 'Mixed Waste',
+  hazardous_waste: 'Hazardous Waste', drain_blockage: 'Drain Blockage',
+  paper_waste: 'Paper Waste', cardboard_waste: 'Cardboard', metal_waste: 'Metal Waste',
+  glass_waste: 'Glass Waste', textile_waste: 'Textile Waste', other: 'Mixed Waste',
 };
 const SEV = {
   low:      { angle: 30,  label: 'Low Risk',    pct: 25 },

@@ -1,0 +1,261 @@
+{
+  "datasets": {
+    "garbage_classification_12": {
+      "root": "E:\\ESSPL Project\\garbage_classification",
+      "classes": {
+        "battery": {
+          "count": 945,
+          "min_w": 140,
+          "min_h": 110,
+          "max_w": 456,
+          "max_h": 306
+        },
+        "biological": {
+          "count": 985,
+          "min_w": 156,
+          "min_h": 112,
+          "max_w": 450,
+          "max_h": 324
+        },
+        "brown-glass": {
+          "count": 607,
+          "min_w": 125,
+          "min_h": 120,
+          "max_w": 512,
+          "max_h": 400
+        },
+        "cardboard": {
+          "count": 891,
+          "min_w": 160,
+          "min_h": 126,
+          "max_w": 512,
+          "max_h": 384
+        },
+        "clothes": {
+          "count": 5325,
+          "min_w": 400,
+          "min_h": 400,
+          "max_w": 888,
+          "max_h": 936
+        },
+        "green-glass": {
+          "count": 629,
+          "min_w": 110,
+          "min_h": 142,
+          "max_w": 512,
+          "max_h": 400
+        },
+        "metal": {
+          "count": 769,
+          "min_w": 150,
+          "min_h": 106,
+          "max_w": 512,
+          "max_h": 384
+        },
+        "paper": {
+          "count": 1050,
+          "min_w": 159,
+          "min_h": 100,
+          "max_w": 512,
+          "max_h": 384
+        },
+        "plastic": {
+          "count": 865,
+          "min_w": 140,
+          "min_h": 146,
+          "max_w": 512,
+          "max_h": 384
+        },
+        "shoes": {
+          "count": 1977,
+          "min_w": 153,
+          "min_h": 119,
+          "max_w": 790,
+          "max_h": 867
+        },
+        "trash": {
+          "count": 697,
+          "min_w": 51,
+          "min_h": 132,
+          "max_w": 381,
+          "max_h": 400
+        },
+        "white-glass": {
+          "count": 775,
+          "min_w": 114,
+          "min_h": 133,
+          "max_w": 512,
+          "max_h": 400
+        }
+      },
+      "corrupted": [],
+      "total_images": 15515,
+      "num_classes": 12,
+      "top_dimensions": [
+        {
+          "w": 400,
+          "h": 533,
+          "count": 2590
+        },
+        {
+          "w": 512,
+          "h": 384,
+          "count": 2358
+        },
+        {
+          "w": 225,
+          "h": 225,
+          "count": 2004
+        },
+        {
+          "w": 400,
+          "h": 534,
+          "count": 1077
+        },
+        {
+          "w": 275,
+          "h": 183,
+          "count": 691
+        }
+      ]
+    },
+    "realwaste": {
+      "root": "E:\\ESSPL Project\\realwaste-main\\RealWaste",
+      "classes": {
+        "Cardboard": {
+          "count": 461,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        },
+        "Food Organics": {
+          "count": 411,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        },
+        "Glass": {
+          "count": 420,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        },
+        "Metal": {
+          "count": 790,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        },
+        "Miscellaneous Trash": {
+          "count": 495,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        },
+        "Paper": {
+          "count": 500,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        },
+        "Plastic": {
+          "count": 921,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        },
+        "Textile Trash": {
+          "count": 318,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        },
+        "Vegetation": {
+          "count": 436,
+          "min_w": 524,
+          "min_h": 524,
+          "max_w": 524,
+          "max_h": 524
+        }
+      },
+      "corrupted": [],
+      "total_images": 4752,
+      "num_classes": 9,
+      "top_dimensions": [
+        {
+          "w": 524,
+          "h": 524,
+          "count": 4752
+        }
+      ]
+    }
+  },
+  "generated_with": "Python 3.13.14",
+  "duplicates": {
+    "exact_duplicate_groups": 18,
+    "exact_duplicate_images": 19,
+    "cross_dataset_exact_duplicates": 0,
+    "examples": [
+      [
+        "garbage_classification\\clothes\\clothes2051.jpg",
+        "garbage_classification\\clothes\\clothes5234.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass231.jpg",
+        "garbage_classification\\green-glass\\green-glass530.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass285.jpg",
+        "garbage_classification\\green-glass\\green-glass555.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass292.jpg",
+        "garbage_classification\\green-glass\\green-glass443.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass336.jpg",
+        "garbage_classification\\green-glass\\green-glass554.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass349.jpg",
+        "garbage_classification\\green-glass\\green-glass461.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass388.jpg",
+        "garbage_classification\\green-glass\\green-glass459.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass403.jpg",
+        "garbage_classification\\green-glass\\green-glass564.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass413.jpg",
+        "garbage_classification\\green-glass\\green-glass517.jpg",
+        "garbage_classification\\green-glass\\green-glass563.jpg"
+      ],
+      [
+        "garbage_classification\\green-glass\\green-glass422.jpg",
+        "garbage_classification\\green-glass\\green-glass482.jpg"
+      ]
+    ]
+  },
+  "imbalance": {
+    "max_class": [
+      "clothes",
+      5325
+    ],
+    "min_class": [
+      "Textile Trash",
+      318
+    ],
+    "imbalance_ratio": 16.75
+  }
+}

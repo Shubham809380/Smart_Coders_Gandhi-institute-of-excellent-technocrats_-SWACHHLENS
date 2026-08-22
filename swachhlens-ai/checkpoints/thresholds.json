@@ -1,0 +1,118 @@
+{
+  "conf_threshold": 0.8,
+  "margin_threshold": 0.1,
+  "selection_basis": "max negative-rejection subject to val coverage >= 80%",
+  "sweep_top": [
+    {
+      "conf": 0.8,
+      "margin": 0.0,
+      "val_coverage": 0.8102,
+      "known_rejected_pct": 18.98,
+      "cifar10_proxy_rejected_pct": 81.58,
+      "cifar10_proxy_f_balance": 0.813,
+      "score": 0.813
+    },
+    {
+      "conf": 0.8,
+      "margin": 0.05,
+      "val_coverage": 0.8102,
+      "known_rejected_pct": 18.98,
+      "cifar10_proxy_rejected_pct": 81.58,
+      "cifar10_proxy_f_balance": 0.813,
+      "score": 0.813
+    },
+    {
+      "conf": 0.8,
+      "margin": 0.1,
+      "val_coverage": 0.8102,
+      "known_rejected_pct": 18.98,
+      "cifar10_proxy_rejected_pct": 81.58,
+      "cifar10_proxy_f_balance": 0.813,
+      "score": 0.813
+    },
+    {
+      "conf": 0.85,
+      "margin": 0.0,
+      "val_coverage": 0.7747,
+      "known_rejected_pct": 22.53,
+      "cifar10_proxy_rejected_pct": 85.3,
+      "cifar10_proxy_f_balance": 0.812,
+      "score": 0.812
+    },
+    {
+      "conf": 0.85,
+      "margin": 0.05,
+      "val_coverage": 0.7747,
+      "known_rejected_pct": 22.53,
+      "cifar10_proxy_rejected_pct": 85.3,
+      "cifar10_proxy_f_balance": 0.812,
+      "score": 0.812
+    },
+    {
+      "conf": 0.85,
+      "margin": 0.1,
+      "val_coverage": 0.7747,
+      "known_rejected_pct": 22.53,
+      "cifar10_proxy_rejected_pct": 85.3,
+      "cifar10_proxy_f_balance": 0.812,
+      "score": 0.812
+    },
+    {
+      "conf": 0.75,
+      "margin": 0.0,
+      "val_coverage": 0.8405,
+      "known_rejected_pct": 15.95,
+      "cifar10_proxy_rejected_pct": 76.57,
+      "cifar10_proxy_f_balance": 0.8014,
+      "score": 0.8014
+    },
+    {
+      "conf": 0.75,
+      "margin": 0.05,
+      "val_coverage": 0.8405,
+      "known_rejected_pct": 15.95,
+      "cifar10_proxy_rejected_pct": 76.57,
+      "cifar10_proxy_f_balance": 0.8014,
+      "score": 0.8014
+    },
+    {
+      "conf": 0.75,
+      "margin": 0.1,
+      "val_coverage": 0.8405,
+      "known_rejected_pct": 15.95,
+      "cifar10_proxy_rejected_pct": 76.57,
+      "cifar10_proxy_f_balance": 0.8014,
+      "score": 0.8014
+    },
+    {
+      "conf": 0.9,
+      "margin": 0.0,
+      "val_coverage": 0.7178,
+      "known_rejected_pct": 28.22,
+      "cifar10_proxy_rejected_pct": 89.86,
+      "cifar10_proxy_f_balance": 0.7981,
+      "score": 0.7981
+    },
+    {
+      "conf": 0.9,
+      "margin": 0.05,
+      "val_coverage": 0.7178,
+      "known_rejected_pct": 28.22,
+      "cifar10_proxy_rejected_pct": 89.86,
+      "cifar10_proxy_f_balance": 0.7981,
+      "score": 0.7981
+    },
+    {
+      "conf": 0.9,
+      "margin": 0.1,
+      "val_coverage": 0.7178,
+      "known_rejected_pct": 28.22,
+      "cifar10_proxy_rejected_pct": 89.86,
+      "cifar10_proxy_f_balance": 0.7981,
+      "score": 0.7981
+    }
+  ],
+  "negative_sets_used": [
+    "cifar10_proxy"
+  ]
+}

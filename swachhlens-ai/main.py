@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from models.detector import detect_waste
+from models.classifier import classify_image, classifier_status
 from models.volume import estimate_volume, get_volume_range
 from models.duplicate import get_image_embedding, cosine_similarity_check
 from models.hotspot import cluster_reports
@@ -124,22 +125,55 @@ async def analyze_waste(
         temp_path = tmp.name
     
     try:
-        # 1. DETECT + CLASSIFY (YOLO / OpenCV fallback)
+        # 0. WASTE GATE + CLASSIFICATION (trained CNN with unknown rejection).
+        #    Replaces the old "COCO object -> waste category" guessing that
+        #    produced Person->Plastic style mistakes. YOLO is still used below
+        #    only for the bounding box that volume estimation needs.
+        t0 = time.time()
+        cls = classify_image(temp_path)
+        t_classify = time.time() - t0
+
+        if cls.get("checked") and not cls["is_waste"]:
+            reason = cls.get("rejection_reason") or "low_confidence"
+            logger.info(f"Rejected as non-waste ({reason}, top={cls['top_predictions'][0]}) in {t_classify:.2f}s")
+            raise HTTPException(
+                status_code=400,
+                detail="No waste detected in image. Please upload a photo of actual garbage/waste.",
+            )
+
+        # 1. DETECT (bbox for volume; label comes from the CNN above)
         t0 = time.time()
         top_detection, all_detections = detect_waste(temp_path)
         t_detect = time.time() - t0
-        
-        if not top_detection:
-            raise HTTPException(status_code=400, detail="No waste detected in image. Please try a clearer photo.")
-        
-        waste_type = top_detection["class"]
-        confidence = top_detection["confidence"]
-        bbox = top_detection["bbox"]
+
+        if cls.get("checked"):
+            waste_type = cls["wasteType"]                 # operational category
+            category = cls["category"]                    # granular CNN class
+            confidence = cls["confidence"] / 100.0
+            top_predictions = cls["top_predictions"]
+        else:
+            # fail-open legacy path: no trained checkpoint available
+            if not top_detection:
+                raise HTTPException(status_code=400, detail="No waste detected in image. Please try a clearer photo.")
+            waste_type = top_detection["class"]
+            category = waste_type
+            confidence = top_detection["confidence"]
+            top_predictions = [{"class": waste_type, "confidence": round(confidence * 100, 1)}]
+
+        bbox = top_detection["bbox"] if top_detection else None
+        if bbox is None:
+            # CNN accepted but YOLO found no box -> full-image box keeps the
+            # volume estimator working (it requires x1,y1,x2,y2).
+            from PIL import Image as _Img
+            with _Img.open(temp_path) as _im:
+                _w, _h = _im.size
+            bbox = [0, 0, _w, _h]
         detector_method = "yolo" if os.getenv("USE_YOLO", "true") == "true" else "opencv_heuristic"
         needs_review = confidence < 0.30 or detector_method == "opencv_heuristic"
         if needs_review:
             logger.warning(f"Low confidence detection ({confidence:.1%}), flagging for review")
-        logger.info(f"Detection: {waste_type} ({confidence:.1%}) in {t_detect:.2f}s [{len(all_detections)} objects]")
+        logger.info(f"Classified: {category} ({confidence:.1%}) in {t_classify:.2f}s; "
+                    f"detect {t_detect:.2f}s [{len(all_detections)} boxes]")
         
         # 2. VOLUME ESTIMATION (SAM + Depth / contour fallback)
         t0 = time.time()
@@ -179,7 +213,13 @@ async def analyze_waste(
         
         response = {
             "wasteType": waste_type,
+            # --- new CNN classification contract (additive, backward compatible)
+            "is_waste": True,
+            "category": category,
             "confidence": round(confidence * 100, 1),
+            "status": "accepted",
+            "top_predictions": top_predictions,
+            # ---------------------------------------------------------------
             "estimatedVolume": volume_category,
             "estimatedVolumeRange": volume_range,
             "volumeScore": round(volume_score, 1),
@@ -192,7 +232,7 @@ async def analyze_waste(
             "needsReview": needs_review,
             "detectionSummary": {
                 "count": len(all_detections),
-                "classes": list(set(d["class"] for d in all_detections)),
+                "classes": sorted({d["class"] for d in all_detections} | {category}),
                 "topConfidence": round(confidence * 100, 1),
                 "coveragePercent": round(min(100, len(all_detections) * 15), 1),
                 "recyclableHeavy": waste_type == "plastic_waste",
@@ -201,6 +241,7 @@ async def analyze_waste(
             "processingTime": round(total_time, 2),
             "models": {
                 "detector": detector_method,
+                "classifier": bool(cls.get("checked")),
                 "volume": "sam_depth" if os.getenv("USE_SAM", "true") == "true" else "contour_heuristic",
                 "duplicate": "clip" if os.getenv("USE_CLIP", "true") == "true" else "phash",
                 "severity": severity_result["method"],
@@ -262,6 +303,7 @@ async def get_hotspots(
 async def model_status():
     from config import USE_YOLO, USE_SAM, USE_DEPTH, USE_CLIP, USE_XGBOOST
     return {
+        "classifier": classifier_status(),
         "yolo": {"enabled": USE_YOLO, "status": "loaded" if USE_YOLO else "disabled"},
         "sam": {"enabled": USE_SAM, "status": "loaded" if USE_SAM else "disabled"},
         "depth_anything": {"enabled": USE_DEPTH, "status": "loaded" if USE_DEPTH else "disabled"},

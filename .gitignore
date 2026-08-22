@@ -23,8 +23,12 @@ venv/
 env/
 
 # === AI MODEL CHECKPOINTS (large binary files) ===
-swachhlens-ai/checkpoints/
 swachhlens-ai/checkpoints/**
+# ...except the small CNN classifier artifacts required by the deployed service
+!swachhlens-ai/checkpoints/best_classifier.pth
+!swachhlens-ai/checkpoints/thresholds.json
+!swachhlens-ai/checkpoints/eval_report.json
+!swachhlens-ai/checkpoints/training_summary.json
 
 # === TRAINING DATA (large datasets, not for repo) ===
 swachhlens-ai/training/images/
@@ -53,3 +57,9 @@ Desktop.ini
 
 .vercel
 .env*
+
+# === ML TRAINING (raw datasets too large for git) ===
+garbage_classification/
+realwaste-main/
+swachhlens-ai/training/cifar10/
+swachhlens-ai/training/*.log

@@ -1,0 +1,118 @@
+{
+  "unified_classes": [
+    "plastic",
+    "paper",
+    "cardboard",
+    "metal",
+    "glass",
+    "organic",
+    "vegetation",
+    "textile",
+    "battery",
+    "mixed_trash"
+  ],
+  "source_mapping_gc": {
+    "cardboard": {
+      "unified": "cardboard",
+      "rationale": "Direct match - corrugated packaging material."
+    },
+    "paper": {
+      "unified": "paper",
+      "rationale": "Direct match - paper sheets/newspaper."
+    },
+    "plastic": {
+      "unified": "plastic",
+      "rationale": "Direct match - plastic bottles/bags/containers."
+    },
+    "metal": {
+      "unified": "metal",
+      "rationale": "Direct match - cans, foil, metal scrap."
+    },
+    "biological": {
+      "unified": "organic",
+      "rationale": "Food/yard scraps are the definition of organic waste."
+    },
+    "green-glass": {
+      "unified": "glass",
+      "rationale": "Colour variant of glass; material identical for recycling."
+    },
+    "brown-glass": {
+      "unified": "glass",
+      "rationale": "Colour variant of glass."
+    },
+    "white-glass": {
+      "unified": "glass",
+      "rationale": "Clear/colourless glass variant."
+    },
+    "clothes": {
+      "unified": "textile",
+      "rationale": "Fabric garments form the textile recycling stream."
+    },
+    "shoes": {
+      "unified": "textile",
+      "rationale": "FLAGGED: footwear is not strictly fabric, but municipal textile streams and RealWaste 'Textile Trash' both cover worn footwear; kept together deliberately."
+    },
+    "battery": {
+      "unified": "battery",
+      "rationale": "Household batteries; operationally routed to HAZARDOUS stream."
+    },
+    "trash": {
+      "unified": "mixed_trash",
+      "rationale": "Dataset explicitly defines 'trash' as residual/mixed waste."
+    }
+  },
+  "source_mapping_rw": {
+    "Cardboard": {
+      "unified": "cardboard",
+      "rationale": "Direct match."
+    },
+    "Paper": {
+      "unified": "paper",
+      "rationale": "Direct match."
+    },
+    "Plastic": {
+      "unified": "plastic",
+      "rationale": "Direct match."
+    },
+    "Metal": {
+      "unified": "metal",
+      "rationale": "Direct match."
+    },
+    "Glass": {
+      "unified": "glass",
+      "rationale": "Direct match."
+    },
+    "Food Organics": {
+      "unified": "organic",
+      "rationale": "Food waste = organic stream."
+    },
+    "Textile Trash": {
+      "unified": "textile",
+      "rationale": "Fabric/textile trash; validates shoes->textile choice above."
+    },
+    "Miscellaneous Trash": {
+      "unified": "mixed_trash",
+      "rationale": "Explicitly miscellaneous/residual waste."
+    },
+    "Vegetation": {
+      "unified": "vegetation",
+      "rationale": "Garden/yard waste. Kept SEPARATE from food organics: visually distinct (leaves/branches vs food), and RealWaste treats it as its own class. Operationally merged into organic_waste downstream (FLAGGED)."
+    }
+  },
+  "operational_category_map": {
+    "plastic": "plastic_waste",
+    "paper": "paper_waste",
+    "cardboard": "cardboard_waste",
+    "metal": "metal_waste",
+    "glass": "glass_waste",
+    "organic": "organic_waste",
+    "vegetation": "organic_waste",
+    "textile": "textile_waste",
+    "battery": "hazardous_waste",
+    "mixed_trash": "garbage_dump"
+  },
+  "notes": [
+    "shoes->textile and Vegetation->organic_waste are FLAGGED judgement calls, documented above.",
+    "Exact duplicates removed before clustering; near-dup clusters never span splits."
+  ]
+}
