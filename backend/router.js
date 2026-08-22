@@ -25,6 +25,7 @@ import {
 import { welcomeEmail, signInAlertEmail, reportReceivedEmail, teamAssignedEmail, reportResolvedEmail, passwordResetEmail } from "./mailer.js";
 import { appConfig } from "./config.js";
 import { updateWorkerLocation, getAlerts as getProximityAlerts, dismissAlert as dismissProximityAlert, dismissAllAlerts as dismissAllProximityAlerts, dismissForReport } from "./proximity.js";
+import { sendPushToUser } from "./push.js";
 
 // Fetch a stored image (local /uploads path or remote URL) and return it as a
 // data URL for Gemini. Returns null on any failure — verification proceeds
@@ -638,7 +639,14 @@ export async function handleApiRequest(req, res) {
         updates["afterMedia.storagePath"] = afterMedia.storagePath;
       }
       const updated = await store.updateReport(reportId, updates);
-      await store.createNotification({ userId: report.citizenId, title: `Report ${nextStatus.replace(/_/g, " ")}`, body: `${reportId} is now ${nextStatus.replace(/_/g, " ")}.` });
+      const statusLabel = nextStatus.replace(/_/g, " ");
+      await store.createNotification({ userId: report.citizenId, title: `Report ${statusLabel}`, body: `${reportId} is now ${statusLabel}.` });
+      sendPushToUser(report.citizenId, {
+        title: `Report ${statusLabel}`,
+        body: `${reportId} is now ${statusLabel}. Tap to track live.`,
+        url: `/tracking?reportId=${reportId}`,
+        tag: reportId,
+      }).catch(() => {});
       if (nextStatus === REPORT_STATUSES.RESOLVED) {
         const citizen = await store.getUserByUid(report.citizenId);
         if (citizen) reportResolvedEmail({ email: citizen.email, name: citizen.name, reportId });
@@ -666,6 +674,12 @@ export async function handleApiRequest(req, res) {
       const teams = await store.getTeams();
       const team = teams.find((t) => t.id === teamId);
       await store.createNotification({ userId: report.citizenId, title: "Cleanup team assigned", body: `${team?.name || teamId} is now assigned to ${reportId}.` });
+      sendPushToUser(report.citizenId, {
+        title: "Cleanup team assigned",
+        body: `${team?.name || teamId} is now assigned to ${reportId}. Tap to track live.`,
+        url: `/tracking?reportId=${reportId}`,
+        tag: reportId,
+      }).catch(() => {});
       return json(res, 200, { report: formatReportForClient(report), team: team ? formatTeamForClient(team) : null });
     }
 
@@ -674,6 +688,29 @@ export async function handleApiRequest(req, res) {
       if (!auth) return;
       const notifications = await store.getNotifications(auth.user.uid, auth.user.role);
       return json(res, 200, { notifications: notifications.map((n) => ({ id: n.id, title: n.title, body: n.body, time: relativeTimeLabel(n.createdAt) })) });
+    }
+
+    if (pathname === "/api/push/subscribe" && req.method === "POST") {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      const body = await readJson(req);
+      const subscription = body.subscription || {};
+      const endpoint = String(subscription.endpoint || "");
+      const keys = subscription.keys || {};
+      if (!endpoint || !keys.p256dh || !keys.auth) {
+        return json(res, 400, { error: { code: "VALIDATION", message: "subscription.endpoint and subscription.keys.{p256dh,auth} are required." } });
+      }
+      await store.savePushSubscription({ userId: auth.user.uid, endpoint, p256dh: String(keys.p256dh), auth: String(keys.auth) });
+      return json(res, 200, { ok: true });
+    }
+
+    if (pathname === "/api/push/unsubscribe" && req.method === "POST") {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      const body = await readJson(req);
+      const endpoint = String(body.endpoint || "");
+      if (endpoint) await store.deletePushSubscription(endpoint);
+      return json(res, 200, { ok: true });
     }
 
     if (pathname === "/api/admin/dashboard" && req.method === "GET") {

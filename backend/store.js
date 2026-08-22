@@ -265,6 +265,30 @@ export const store = {
     return { id, ...payload };
   },
 
+  async savePushSubscription({ userId, endpoint, p256dh, auth }) {
+    const existing = await query("SELECT id, user_id FROM push_subscriptions WHERE endpoint = $1", [endpoint]);
+    if (existing.rows.length > 0) {
+      await query("UPDATE push_subscriptions SET user_id = $1, p256dh = $2, auth = $3 WHERE endpoint = $4", [userId, p256dh, auth, endpoint]);
+      return existing.rows[0].id;
+    }
+    const id = `push-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    await query(
+      "INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth) VALUES ($1,$2,$3,$4,$5)",
+      [id, userId, endpoint, p256dh, auth]
+    );
+    return id;
+  },
+
+  async deletePushSubscription(endpoint) {
+    await query("DELETE FROM push_subscriptions WHERE endpoint = $1", [endpoint]);
+  },
+
+  async getPushSubscriptionsForUsers(userIds) {
+    if (!userIds || userIds.length === 0) return [];
+    const res = await query("SELECT user_id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ANY($1::text[])", [userIds]);
+    return res.rows.map((r) => ({ userId: r.user_id, endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth }));
+  },
+
   async getNotifications(userId, role) {
     let res;
     if (role === "admin" || role === "super_admin" || role === "ward_officer" || role === "sanitation_supervisor") {
