@@ -53,7 +53,16 @@ async function callGemini(parts) {
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify({
         contents: [{ role: "user", parts }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 200 },
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 256,
+          responseMimeType: "application/json",
+          // gemini-2.5+ are "thinking" models; disable thinking so the verdict
+          // comes back fast and inside our tight latency budget.
+          ...(appConfig.geminiModel.startsWith("gemini-2.5") || appConfig.geminiModel.startsWith("gemini-3")
+            ? { thinkingConfig: { thinkingBudget: 0 } }
+            : {}),
+        },
       }),
       signal: controller.signal,
     });
@@ -65,7 +74,7 @@ async function callGemini(parts) {
     throw new Error(`Gemini HTTP ${response.status}: ${body.slice(0, 160)}`);
   }
   const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join("") || "";
+  const text = data?.candidates?.[0]?.content?.parts?.filter((p) => !p.thought).map((p) => p.text).filter(Boolean).join("") || "";
   if (!text) throw new Error("Gemini returned an empty response.");
   return text;
 }
