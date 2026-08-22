@@ -197,6 +197,7 @@ export async function handleApiRequest(req, res) {
       // Privileged roles are provisioned out-of-band (seed/admin tooling), never via this endpoint.
       const role = ["citizen", "cleanup_worker"].includes(body.role) ? body.role : "citizen";
       if (!name || !email || !password) return json(res, 400, { error: { code: "VALIDATION", message: "Name, email, and password are required." } });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: { code: "VALIDATION", message: "Please enter a valid email address." } });
       if (password.length < 6) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "Password must be at least 6 characters." } });
       if (body.termsAccepted !== true) {
         return json(res, 400, { error: { code: "TERMS_REQUIRED", message: "You must accept the Terms of Service and Privacy Policy to create an account." } });
