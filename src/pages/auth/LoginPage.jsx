@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useGoogleLogin } from "@react-oauth/google";
 import { authService, popSessionExpired } from "../../services.js";
 import logo from "../../logo.svg";
@@ -118,6 +118,7 @@ function BrandPanel() {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -126,9 +127,12 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loginMode, setLoginMode] = useState("citizen");
   const [sessionExpired, setSessionExpired] = useState(false);
+  const resetMessage = location.state?.resetMessage || "";
 
   useEffect(() => {
     if (popSessionExpired()) setSessionExpired(true);
+    // Clear the one-time reset banner from history so refresh/back doesn't re-show it.
+    if (resetMessage) window.history.replaceState({}, "");
   }, []);
 
   const googleLogin = useGoogleLogin({
@@ -291,6 +295,14 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* Password Reset Success Notice */}
+            {resetMessage && (
+              <div className="mb-4 flex items-start gap-3 bg-primary-container/40 border border-outline-variant rounded-xl px-4 py-3">
+                <span className="material-symbols-outlined text-[20px] mt-0.5 shrink-0" style={{ color: "#006b2c" }}>check_circle</span>
+                <span className="text-sm font-medium text-on-background" style={{ fontFamily: "Manrope" }}>{resetMessage}</span>
+              </div>
+            )}
+
             {/* Session Expired Notice */}
             {sessionExpired && (
               <div className="mb-4 flex items-start gap-3 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl px-4 py-3">
@@ -404,6 +416,7 @@ export default function LoginPage() {
                 </label>
                 <button
                   type="button"
+                  onClick={() => navigate("/forgot-password")}
                   className="text-sm text-primary font-semibold hover:underline transition-colors"
                   style={{ fontFamily: "Manrope" }}
                 >

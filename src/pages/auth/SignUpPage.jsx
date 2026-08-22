@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGoogleLogin } from "@react-oauth/google";
 import { authService } from "../../services.js";
+import { LegalModal } from "./Legal.jsx";
 import logo from "../../logo.svg";
 
 function BrandPanel() {
@@ -134,6 +135,7 @@ export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [legalModal, setLegalModal] = useState(null); // "terms" | "privacy" | null
 
   const passwordStrength = useMemo(function () {
     return getPasswordStrength(password);
@@ -141,14 +143,16 @@ export default function SignUpPage() {
 
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword;
   const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  const isFormValid = name.trim().length > 0
-    && email.trim().length > 0
-    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  // Everything except the terms checkbox — drives the "please accept" hint.
+  const isFormValidExceptTerms = name.trim().length > 0
+    && emailValid
     && password.length >= 6
     && password === confirmPassword
-    && role !== ""
-    && termsAccepted;
+    && role !== "";
+
+  const isFormValid = isFormValidExceptTerms && termsAccepted;
 
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
@@ -172,14 +176,18 @@ export default function SignUpPage() {
 
   async function handleEmailSignUp(e) {
     e.preventDefault();
+    if (!termsAccepted) {
+      setError("Please accept the Terms of Service and Privacy Policy to create your account.");
+      return;
+    }
     if (!isFormValid) return;
 
     setLoading(true);
     setError("");
     try {
       const selectedRole = role === "worker" ? "cleanup_worker" : role === "admin" ? "admin" : "citizen";
-      const snapshot = await authService.signup({ name, email, password, phone: "", role: selectedRole });
-      const route = role === "worker" ? "/worker/home" : role === "admin" ? "/admin/dashboard" : "/home";
+      const snapshot = await authService.signup({ name, email, password, phone: "", role: selectedRole, termsAccepted: true });
+      const route = snapshot.role === "cleanup_worker" ? "/worker/home" : snapshot.role !== "citizen" ? "/admin/dashboard" : "/home";
       navigate(route);
     } catch (err) {
       setError(authService.getFriendlyError(err));
@@ -553,11 +561,39 @@ export default function SignUpPage() {
                   </div>
                   <span className="text-sm text-on-surface-variant leading-snug" style={{ fontFamily: "Manrope" }}>
                     I agree to the{" "}
-                    <span className="text-primary font-semibold cursor-pointer hover:underline">Terms of Service</span>
+                    <button
+                      type="button"
+                      onClick={function (e) { e.preventDefault(); e.stopPropagation(); setLegalModal("terms"); }}
+                      className="text-primary font-semibold hover:underline align-baseline"
+                      style={{ fontFamily: "Manrope" }}
+                    >
+                      Terms of Service
+                    </button>
                     {" "}and{" "}
-                    <span className="text-primary font-semibold cursor-pointer hover:underline">Privacy Policy</span>
+                    <button
+                      type="button"
+                      onClick={function (e) { e.preventDefault(); e.stopPropagation(); setLegalModal("privacy"); }}
+                      className="text-primary font-semibold hover:underline align-baseline"
+                      style={{ fontFamily: "Manrope" }}
+                    >
+                      Privacy Policy
+                    </button>
                   </span>
                 </label>
+                {/* Validation hint: everything else valid but terms unchecked */}
+                {!termsAccepted && isFormValidExceptTerms && (
+                  <div
+                    className="mt-2.5 flex items-start gap-2 bg-surface-container border border-outline-variant rounded-xl px-3 py-2.5"
+                    style={{ animation: "slideDown 0.25s ease-out" }}
+                  >
+                    <span className="material-symbols-outlined text-[18px] mt-0.5 shrink-0" style={{ color: "#e8a317" }}>
+                      gavel
+                    </span>
+                    <span className="text-xs font-medium text-on-surface-variant leading-snug" style={{ fontFamily: "Manrope" }}>
+                      Please accept the Terms of Service and Privacy Policy above to enable the Sign Up button.
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Sign Up Button */}
@@ -593,6 +629,9 @@ export default function SignUpPage() {
           </div>
         </div>
       </div>
+
+      {/* Terms / Privacy viewer — keeps signup form state intact */}
+      <LegalModal open={legalModal !== null} kind={legalModal} onClose={function () { setLegalModal(null); }} />
     </div>
   );
 }

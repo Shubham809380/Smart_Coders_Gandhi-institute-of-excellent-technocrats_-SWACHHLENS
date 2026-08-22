@@ -192,6 +192,19 @@ export async function initDatabase() {
     await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS ai_after_analysis JSONB");
     await db.query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'info'");
     await db.query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS report_id TEXT DEFAULT ''");
+    // Terms acceptance audit trail on users.
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN DEFAULT false");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ");
+    // Single-use, hashed, expiring password-reset tokens.
+    await db.query(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id SERIAL PRIMARY KEY,
+      uid TEXT NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+      token_hash TEXT UNIQUE NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ DEFAULT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db.query("CREATE INDEX IF NOT EXISTS idx_reset_tokens_uid ON password_reset_tokens(uid)");
     await db.query("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status)");
     await db.query("CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at)");
     await db.query("CREATE INDEX IF NOT EXISTS idx_reports_priority ON reports(priority_score DESC)");

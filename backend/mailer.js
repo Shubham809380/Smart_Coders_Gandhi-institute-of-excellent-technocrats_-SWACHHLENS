@@ -150,6 +150,29 @@ export function signInAlertEmail({ email, name, method = "email & password" }) {
   });
 }
 
+export function passwordResetEmail({ email, name, resetUrl, expiryMinutes = 30 }) {
+  return sendEmail({
+    to: email,
+    subject: "Reset your SwachhLens password",
+    title: "Password reset request",
+    html: `
+      <p style="margin:0 0 14px;line-height:1.7;">Hi ${name || "there"}, we received a request to reset the password for your SwachhLens account. Click the button below to choose a new password:</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;">
+        <tr><td align="center" bgcolor="#006B2C" style="border-radius:12px;">
+          <a href="${resetUrl}" target="_blank" style="display:inline-block;padding:13px 34px;font-family:Segoe UI,Arial,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:12px;">Reset Password</a>
+        </td></tr>
+      </table>
+      <p style="margin:0 0 8px;line-height:1.7;font-size:13px;color:#526072;">If the button does not work, copy and paste this link into your browser:</p>
+      <p style="margin:0 0 16px;word-break:break-all;"><a href="${resetUrl}" style="color:#006B2C;font-size:12px;">${resetUrl}</a></p>
+      <table style="width:100%;font-size:13px;line-height:1.9;color:#526072;background:#f8fafc;border-radius:10px;padding:4px 14px;">
+        <tr><td style="width:38%;"><strong>Valid for</strong></td><td>${expiryMinutes} minutes from now</td></tr>
+        <tr><td><strong>Request time</strong></td><td>${istNow()}</td></tr>
+      </table>
+      <p style="margin:14px 0 0;line-height:1.7;"><strong>Didn't request this?</strong> You can safely ignore this email — your password will remain unchanged. Only a person with access to this email address can reset the password.</p>
+      <p style="margin:16px 0 0;line-height:1.7;">Regards,<br/><strong>Team SwachhLens</strong></p>`,
+  });
+}
+
 export function reportReceivedEmail({ email, name, reportId, address, priority }) {
   return sendEmail({
     to: email,

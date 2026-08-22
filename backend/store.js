@@ -86,13 +86,48 @@ export const store = {
     return rowToUser(res.rows[0]);
   },
 
-  async createUser({ uid, name, email, phone, passwordHash, salt, role, photoUrl }) {
+  async createUser({ uid, name, email, phone, passwordHash, salt, role, photoUrl, termsAccepted, termsAcceptedAt }) {
     await query(
-      `INSERT INTO users (uid, name, email, phone, password_hash, salt, role, photo_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO users (uid, name, email, phone, password_hash, salt, role, photo_url, terms_accepted, terms_accepted_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (email) DO NOTHING`,
-      [uid, name, email.toLowerCase(), phone, passwordHash, salt, role || "citizen", photoUrl || ""]
+      [uid, name, email.toLowerCase(), phone, passwordHash, salt, role || "citizen", photoUrl || "", Boolean(termsAccepted), termsAcceptedAt || null]
     );
     return this.getUserByEmail(email.toLowerCase());
+  },
+
+  async updateUserPassword(uid, passwordHash, salt) {
+    await query("UPDATE users SET password_hash = $1, salt = $2, updated_at = NOW() WHERE uid = $3", [passwordHash, salt, uid]);
+    return this.getUserByUid(uid);
+  },
+
+  async getPasswordHashByUid(uid) {
+    const res = await query("SELECT password_hash FROM users WHERE uid = $1", [uid]);
+    return res.rows[0]?.password_hash || "";
+  },
+
+  // Invalidates any previous pending tokens for the user, then stores the new one.
+  async createPasswordReset({ uid, tokenHash, expiresAt }) {
+    await query("DELETE FROM password_reset_tokens WHERE uid = $1", [uid]);
+    await query(
+      "INSERT INTO password_reset_tokens (uid, token_hash, expires_at) VALUES ($1, $2, $3)",
+      [uid, tokenHash, expiresAt]
+    );
+  },
+
+  // Atomically consume a token: single-use AND unexpired, else no row returns.
+  async consumePasswordReset(tokenHash) {
+    const res = await query(
+      `UPDATE password_reset_tokens SET used_at = NOW()
+       WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+       RETURNING uid`,
+      [tokenHash]
+    );
+    return res.rows[0] || null;
+  },
+
+  async deletePasswordResetsForUser(uid) {
+    await query("DELETE FROM password_reset_tokens WHERE uid = $1", [uid]);
   },
 
   async updateUserProfile(uid, updates) {

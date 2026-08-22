@@ -256,8 +256,8 @@ export const authService = {
         emitAuthChange();
         return this.getSessionSnapshot();
     },
-    async signup({ name, email, password, phone = "", role = "citizen" }) {
-        const data = await api("/auth/signup", { method: "POST", body: JSON.stringify({ name, email, password, phone, role }) });
+    async signup({ name, email, password, phone = "", role = "citizen", termsAccepted = false }) {
+        const data = await api("/auth/signup", { method: "POST", body: JSON.stringify({ name, email, password, phone, role, termsAccepted }) });
         setToken(data.sessionToken);
         state.currentUser = data.currentUser;
         state.startup = { appState: APP_STATES.AUTHENTICATED_CITIZEN, loading: false, error: "" };
@@ -286,9 +286,13 @@ export const authService = {
         persistClientState();
         emitAuthChange();
     },
-    async resetPassword(email) {
-        const data = await api("/auth/reset-password", { method: "POST", body: JSON.stringify({ email }) });
-        return { message: data.message || `A password reset email has been sent to ${email}.` };
+    async forgotPassword(email) {
+        const data = await api("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
+        return { message: data.message || "If an account exists with this email, a password reset link has been sent." };
+    },
+    async resetPassword(token, password) {
+        const data = await api("/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password }) });
+        return { message: data.message || "Password reset successfully. Please sign in with your new password." };
     },
     getFriendlyError(error) { return buildFriendlyAuthError(error); },
 };

@@ -7,4 +7,5 @@ export const appConfig = {
   geminiApiKey: process.env.GEMINI_API_KEY || "",
   geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
   geminiTimeoutMs: Number(process.env.GEMINI_TIMEOUT_MS || 30000),
+  frontendUrl: (process.env.FRONTEND_URL || "").replace(/\/+$/, ""),
 };

@@ -9,6 +9,7 @@ import {
   calculatePriority,
   createId,
   createPasswordHash,
+  createResetToken,
   createSessionToken,
   formatReportForClient,
   formatTeamForClient,
@@ -18,9 +19,11 @@ import {
   relativeTimeLabel,
   sanitizeUser,
   saveDataUrlMedia,
+  sha256Hex,
   validateStatusTransition,
 } from "./utils.js";
-import { welcomeEmail, signInAlertEmail, reportReceivedEmail, teamAssignedEmail, reportResolvedEmail } from "./mailer.js";
+import { welcomeEmail, signInAlertEmail, reportReceivedEmail, teamAssignedEmail, reportResolvedEmail, passwordResetEmail } from "./mailer.js";
+import { appConfig } from "./config.js";
 import { updateWorkerLocation, getAlerts as getProximityAlerts, dismissAlert as dismissProximityAlert, dismissAllAlerts as dismissAllProximityAlerts, dismissForReport } from "./proximity.js";
 
 // Fetch a stored image (local /uploads path or remote URL) and return it as a
@@ -157,6 +160,18 @@ function buildDashboard(state) {
 
 const aiProvider = getAIProvider();
 
+// ---- Password reset constants & abuse guard ----
+const RESET_TOKEN_TTL_MIN = 30;
+const rateBuckets = new Map();
+function allowRate(key, limit, windowMs) {
+  const now = Date.now();
+  const hits = (rateBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  if (hits.length >= limit) { rateBuckets.set(key, hits); return false; }
+  hits.push(now);
+  rateBuckets.set(key, hits);
+  return true;
+}
+
 export async function handleApiRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
   const { pathname } = url;
@@ -178,14 +193,19 @@ export async function handleApiRequest(req, res) {
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
       const phone = String(body.phone || "").trim();
-      const role = body.role || "citizen";
+      // Security: public signup may only create citizen/worker accounts.
+      // Privileged roles are provisioned out-of-band (seed/admin tooling), never via this endpoint.
+      const role = ["citizen", "cleanup_worker"].includes(body.role) ? body.role : "citizen";
       if (!name || !email || !password) return json(res, 400, { error: { code: "VALIDATION", message: "Name, email, and password are required." } });
       if (password.length < 6) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "Password must be at least 6 characters." } });
+      if (body.termsAccepted !== true) {
+        return json(res, 400, { error: { code: "TERMS_REQUIRED", message: "You must accept the Terms of Service and Privacy Policy to create an account." } });
+      }
       const existing = await store.getUserByEmail(email);
       if (existing) return json(res, 409, { error: { code: "ACCOUNT_EXISTS", message: "An account with this email already exists." } });
       const uid = createId("user");
       const { salt, passwordHash } = await createPasswordHash(password);
-      const user = await store.createUser({ uid, name, email, phone, passwordHash, salt, role });
+      const user = await store.createUser({ uid, name, email, phone, passwordHash, salt, role, termsAccepted: true, termsAcceptedAt: new Date().toISOString() });
       welcomeEmail(user);
       const token = createSessionToken();
       await store.createSession(token, uid);
@@ -303,18 +323,65 @@ export async function handleApiRequest(req, res) {
       return json(res, 200, { sessionToken: token, currentUser: sanitizeUser(user), role: user.role, isAuthenticated: true, loading: false, error: "" });
     }
 
-    if (pathname === "/api/auth/reset-password" && req.method === "POST") {
+    if (pathname === "/api/auth/forgot-password" && req.method === "POST") {
       const body = await readJson(req);
       const email = String(body.email || "").trim().toLowerCase();
-      const user = await store.getUserByEmail(email);
-      if (!user) return json(res, 404, { error: { code: "NOT_FOUND", message: "We could not find an account with that email." } });
-      const pool = (await import("./db.js")).getPool();
-      const accRes = await pool.query("SELECT password_hash FROM users WHERE uid = $1", [user.uid]);
-      const acc = accRes.rows[0];
-      if (acc && acc.password_hash.startsWith("google-oauth-")) {
-        return json(res, 400, { error: { code: "GOOGLE_ACCOUNT", message: "This account uses Google sign-in. Please sign in with Google instead." } });
+      // Generic response no matter what — never reveal whether an account exists.
+      const GENERIC = "If an account exists with this email, a password reset link has been sent.";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return json(res, 200, { message: GENERIC });
       }
-      return json(res, 200, { message: `A password reset link has been prepared for ${email}.` });
+      const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket?.remoteAddress || "unknown";
+      // Abuse guard: 3 per email/hour, 10 per IP/hour. Silently throttled with the same generic reply.
+      if (!allowRate(`fp:email:${email}`, 3, 60 * 60 * 1000) || !allowRate(`fp:ip:${ip}`, 10, 60 * 60 * 1000)) {
+        console.warn(`[auth] forgot-password throttled (${email ? "email hit" : "ip hit"}): ${ip}`);
+        return json(res, 429, { error: { code: "RATE_LIMITED", message: "Too many reset requests. Please try again later." } });
+      }
+      try {
+        const user = await store.getUserByEmail(email);
+        // Google-only accounts authenticate via Google; a password reset link is meaningless for them,
+        // and skipping keeps the response identical from the outside.
+        if (user && !String(await store.getPasswordHashByUid(user.uid)).startsWith("google-oauth-")) {
+          const token = createResetToken();
+          const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000).toISOString();
+          await store.createPasswordReset({ uid: user.uid, tokenHash: sha256Hex(token), expiresAt });
+          const base = appConfig.frontendUrl || String(req.headers.origin || "").replace(/\/+$/, "");
+          if (base) {
+            passwordResetEmail({ email: user.email, name: user.name, resetUrl: `${base}/reset-password/${token}`, expiryMinutes: RESET_TOKEN_TTL_MIN });
+          } else {
+            console.error("[auth] FRONTEND_URL/Origin missing — reset email not sent, token left unconsumable.");
+          }
+        }
+      } catch (mailErr) {
+        // Never leak internals; the user still gets the generic success.
+        console.error("[auth] forgot-password processing failed:", mailErr.message);
+      }
+      return json(res, 200, { message: GENERIC });
+    }
+
+    if (pathname === "/api/auth/reset-password" && req.method === "POST") {
+      const body = await readJson(req);
+      const token = String(body.token || "").trim();
+      const password = String(body.password || "");
+      if (!token) return json(res, 400, { error: { code: "VALIDATION", message: "Reset token is missing or invalid." } });
+      if (password.length < 6) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "Password must be at least 6 characters." } });
+      // Atomic consume: fails when the token is unknown, expired, or already used.
+      let uid;
+      try {
+        const row = await store.consumePasswordReset(sha256Hex(token));
+        uid = row?.uid;
+      } catch (dbErr) {
+        console.error("[auth] reset-password db failure:", dbErr.message);
+        return json(res, 500, { error: { code: "DB_FAILED", message: "Something went wrong on our side. Please try again." } });
+      }
+      if (!uid) {
+        return json(res, 400, { error: { code: "INVALID_TOKEN", message: "This reset link is invalid, expired, or has already been used. Please request a new one." } });
+      }
+      const { salt, passwordHash } = await createPasswordHash(password);
+      await store.updateUserPassword(uid, passwordHash, salt);
+      await store.deletePasswordResetsForUser(uid);
+      publish("user:update", { uid });
+      return json(res, 200, { message: "Password reset successfully. Please sign in with your new password." });
     }
 
     if (pathname === "/api/auth/profile" && req.method === "PUT") {

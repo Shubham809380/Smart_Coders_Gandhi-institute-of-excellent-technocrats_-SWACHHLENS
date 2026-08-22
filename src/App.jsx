@@ -9,6 +9,10 @@ const SplashScreen = lazy(() => import("./pages/SplashScreen"));
 const PermissionFlow = lazy(() => import("./pages/PermissionFlow"));
 const LoginPage = lazy(() => import("./pages/auth/LoginPage"));
 const SignUpPage = lazy(() => import("./pages/auth/SignUpPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage"));
+const TermsPage = lazy(() => import("./pages/auth/Legal").then((m) => ({ default: m.TermsPage })));
+const PrivacyPage = lazy(() => import("./pages/auth/Legal").then((m) => ({ default: m.PrivacyPage })));
 const HomePage = lazy(() => import("./pages/citizen/HomePage"));
 const ExploreMap = lazy(() => import("./pages/citizen/ExploreMap"));
 const CaptureWaste = lazy(() => import("./pages/citizen/CaptureWaste"));
@@ -122,6 +126,10 @@ export default function App() {
           <Route path="/permissions" element={<PermissionFlow />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignUpPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPage />} />
 
           {/* Citizen Routes */}
           <Route path="/home" element={

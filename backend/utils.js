@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { extname, join } from "node:path";
 import { mkdirSync, writeFileSync, constants as fsConstants, accessSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,16 @@ export function createId(prefix) {
 
 export function createSessionToken() {
   return randomBytes(24).toString("hex");
+}
+
+// Cryptographically secure, URL-safe single-use reset token (sent to user).
+export function createResetToken() {
+  return randomBytes(32).toString("base64url");
+}
+
+// Only the SHA-256 hash of the token is ever stored in the database.
+export function sha256Hex(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
 }
 
 const BCRYPT_ROUNDS = 10;

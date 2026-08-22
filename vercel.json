@@ -15,6 +15,10 @@
     {
       "source": "/uploads/(.*)",
       "destination": "/api/index"
+    },
+    {
+      "source": "/((?!api/|uploads/).*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
