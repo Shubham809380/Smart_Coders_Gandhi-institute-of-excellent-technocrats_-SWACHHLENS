@@ -1,0 +1,18 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SwachhLens">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0fa958"/>
+      <stop offset="100%" stop-color="#0a7a3c"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect width="120" height="120" rx="30"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#squircle)">
+    <rect width="120" height="120" fill="url(#bg)"/>
+    <circle cx="55" cy="53" r="24" fill="none" stroke="#ffffff" stroke-width="4.5" opacity="0.92"/>
+    <line x1="72" y1="70" x2="90" y2="88" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.85"/>
+    <path d="M44 55 C44 42, 55 34, 66 34 C66 34, 66 48, 55 55 C55 55, 48 58, 44 55Z" fill="#ffffff" opacity="0.9"/>
+    <circle cx="55" cy="53" r="3" fill="#34d399" opacity="0.9"/>
+  </g>
+</svg>

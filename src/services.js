@@ -94,6 +94,60 @@ async function api(path, options = {}) {
 
 const stored = readStoredState();
 
+// ---- Web Push (real OS notifications) -------------------------------------
+// After login (or session restore) we register a push subscription with the
+// service worker and hand it to the backend, but ONLY if the user already
+// granted the Notification permission (e.g. during PermissionFlow).
+function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = window.atob(base64);
+    const output = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+    return output;
+}
+
+let pushSubscriptionInFlight = null;
+
+function ensurePushSubscription() {
+    // Fire-and-forget: push setup must never block or break login.
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
+    if (!("PushManager" in window)) return;
+    if (Notification.permission !== "granted") return;
+    if (!getToken()) return;
+    if (pushSubscriptionInFlight) return;
+    pushSubscriptionInFlight = (async () => {
+        try {
+            const vapidKey = String(import.meta.env.VITE_VAPID_PUBLIC_KEY || "");
+            if (!vapidKey) return;
+            const registration = await navigator.serviceWorker.ready;
+            let subscription = await registration.pushManager.getSubscription();
+            if (!subscription) {
+                subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(vapidKey),
+                });
+            }
+            const json = subscription.toJSON();
+            await api("/push/subscribe", {
+                method: "POST",
+                timeoutMs: 15000,
+                body: JSON.stringify({ subscription: json }),
+            });
+        } catch (err) {
+            console.warn("[push] subscription failed:", err?.message || err);
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                const stale = await registration.pushManager.getSubscription();
+                if (stale && String(err?.message || "").includes("401")) await stale.unsubscribe();
+            } catch { /* ignore */ }
+        } finally {
+            pushSubscriptionInFlight = null;
+        }
+    })();
+}
+
+
 const state = {
     onboardingCompleted: typeof stored.onboardingCompleted !== "undefined" ? stored.onboardingCompleted : false,
     startup: { appState: APP_STATES.INITIALIZING, loading: true, error: "" },
@@ -179,6 +233,7 @@ export const appService = {
                 const appState = data.role && data.role !== "citizen" ? APP_STATES.AUTHENTICATED_ADMIN : APP_STATES.AUTHENTICATED_CITIZEN;
                 state.startup = { appState, loading: false, error: "" };
                 lastErr = null;
+                ensurePushSubscription();
                 break;
             } catch (err) {
                 lastErr = err;
@@ -246,6 +301,11 @@ export const authService = {
         };
     },
     getCurrentRole() { return state.currentUser?.role || "citizen"; },
+    // Re-attempt push registration (called after Notification permission is
+    // granted mid-session, e.g. from the PermissionFlow screen).
+    refreshPushSubscription() {
+        ensurePushSubscription();
+    },
     async login({ email, password }) {
         const data = await api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
         setToken(data.sessionToken);
@@ -254,6 +314,7 @@ export const authService = {
         state.startup = { appState, loading: false, error: "" };
         persistClientState();
         emitAuthChange();
+        ensurePushSubscription();
         return this.getSessionSnapshot();
     },
     async signup({ name, email, password, phone = "", role = "citizen", termsAccepted = false }) {
@@ -263,6 +324,7 @@ export const authService = {
         state.startup = { appState: APP_STATES.AUTHENTICATED_CITIZEN, loading: false, error: "" };
         persistClientState();
         emitAuthChange();
+        ensurePushSubscription();
         return this.getSessionSnapshot();
     },
     async googleLogin(accessToken, role) {
@@ -275,6 +337,7 @@ export const authService = {
         state.startup = { appState, loading: false, error: "" };
         persistClientState();
         emitAuthChange();
+        ensurePushSubscription();
         return this.getSessionSnapshot();
     },
     async logout() {
