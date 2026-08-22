@@ -114,6 +114,42 @@ async function requireRoles(req, res, roles) {
   return auth;
 }
 
+// ---------------------------------------------------------------------------
+// Realtime notification helper — the single place where a user-facing
+// notification is persisted AND pushed over Socket.IO (and optionally Web
+// Push). Database stays the source of truth; sockets only synchronize UIs.
+// ---------------------------------------------------------------------------
+async function notifyUser(uid, { title, body, kind = "info", reportId = "", push = false, pushUrl = "" }) {
+  if (!uid) return;
+  try {
+    await store.createNotification({ userId: uid, title, body, kind, reportId });
+  } catch (err) {
+    console.error("[notify] persist failed:", err?.message);
+  }
+  publish("notification:new", { uid, title, body, kind, reportId, at: nowIso() }, { uids: [uid] });
+  if (push) {
+    sendPushToUser(uid, { title, body, url: pushUrl || (reportId ? `/tracking?reportId=${reportId}` : "/"), tag: reportId || title }).catch(() => {});
+  }
+}
+
+// All admin-variant accounts (new complaint/alert fan-out must reach every one).
+async function getAdminUids() {
+  const users = await store.getAllUsers();
+  return users.filter((u) => ADMIN_ROLES.includes(u.role) && u.isActive !== false).map((u) => u.uid);
+}
+
+// UIDs of every cleanup worker belonging to the team assigned to a report.
+async function getAssignedWorkerUids(report) {
+  if (!report?.assignedTeamId) return [];
+  const team = await store.getTeamById(report.assignedTeamId);
+  if (!team) return [];
+  return [...new Set([team.leaderId, ...(team.memberIds || [])].filter(Boolean))];
+}
+
+// Per-process GPS write throttle for worker locations (serverless-safe: worst
+// case a cold instance writes once more).
+const LOCATION_WRITE_TS = new Map();
+
 async function findDuplicateMatch(incoming) {
   const state = await store.getState();
   const lookbackMs = 1000 * 60 * 60 * 48;
@@ -392,9 +428,13 @@ export async function handleApiRequest(req, res) {
       const body = await readJson(req);
       const name = String(body.name || "").trim();
       const phone = String(body.phone || "").trim();
-      if (!name) return json(res, 400, { error: { code: "VALIDATION", message: "Name is required." } });
-      const updates = { name };
+      const languageOnly = !name && ["en", "hi", "or"].includes(body.language);
+      if (!name && !languageOnly) return json(res, 400, { error: { code: "VALIDATION", message: "Name is required." } });
+      const updates = {};
+      if (name) updates.name = name;
       if (phone) updates.phone = phone;
+      // Language preference drives the UI localization (en | hi | or).
+      if (["en", "hi", "or"].includes(body.language)) updates.language = body.language;
       const updated = await store.updateUserProfile(auth.user.uid, updates);
       return json(res, 200, { currentUser: sanitizeUser(updated) });
     }
@@ -567,10 +607,24 @@ export async function handleApiRequest(req, res) {
       baseReport.duplicate = dup;
       if (dup.isPotentialDuplicate) baseReport.priority = calculatePriority(aiAnalysis, { address: payload.location.address || "", duplicateSupportCount: 1, ageHours: 0 });
       const created = await store.createReport(baseReport);
-      await store.createNotification({ userId: auth.user.uid, title: "Report submitted", body: `${reportId} is now in the AI review queue.` });
-      await store.createNotification({ userId: "user-admin", title: "New complaint received", body: `${reportId} needs municipal review.` });
+      // DB write succeeded — only now fan out notifications and live events.
+      notifyUser(auth.user.uid, {
+        title: "Report submitted",
+        body: `${reportId} is now in the AI review queue.`,
+        kind: "success", reportId,
+      });
+      const adminUids = await getAdminUids();
+      for (const uid of adminUids) {
+        await store.createNotification({ userId: uid, title: "New complaint received", body: `${reportId} needs municipal review.`, kind: "info", reportId });
+        publish("notification:new", { uid, title: "New complaint received", body: `${reportId} needs municipal review.`, kind: "info", reportId, at: nowIso() }, { uids: [uid] });
+      }
+      publish("waste:new", {
+        id: reportId, wardId: baseReport.location.wardId, locality: baseReport.location.locality,
+        status: created.status, wasteType: aiAnalysis.wasteType, severity: aiAnalysis.severity,
+        priorityLevel: baseReport.priority.level, latitude: baseReport.location.latitude, longitude: baseReport.location.longitude,
+        createdAt: created.createdAt,
+      }, { roles: [...ADMIN_ROLES] });
       reportReceivedEmail({ email: auth.user.email, name: auth.user.name, reportId, address: resolvedAddress, priority: baseReport.priority.level || "medium" });
-      publish("waste:new", { id: reportId, wardId: baseReport.location.wardId });
       return json(res, 201, { report: formatReportForClient(created) });
     }
 
@@ -640,19 +694,35 @@ export async function handleApiRequest(req, res) {
       }
       const updated = await store.updateReport(reportId, updates);
       const statusLabel = nextStatus.replace(/_/g, " ");
-      await store.createNotification({ userId: report.citizenId, title: `Report ${statusLabel}`, body: `${reportId} is now ${statusLabel}.` });
-      sendPushToUser(report.citizenId, {
+      // Live sync: everyone authorized to watch this report + all admins.
+      const targets = { roles: [...ADMIN_ROLES], rooms: [`report:${reportId}`] };
+      const workerUids = await getAssignedWorkerUids(updated);
+      targets.uids = workerUids;
+      publish("waste:status:update", { id: reportId, status: nextStatus, updatedAt: updated.updatedAt, teamId: updated.assignedTeamId }, targets);
+      notifyUser(report.citizenId, {
         title: `Report ${statusLabel}`,
-        body: `${reportId} is now ${statusLabel}. Tap to track live.`,
-        url: `/tracking?reportId=${reportId}`,
-        tag: reportId,
-      }).catch(() => {});
+        body: `${reportId} is now ${statusLabel}.`,
+        kind: "status", reportId,
+        push: true,
+      });
+      // Worker-facing notice when an admin moves a case (e.g. reopen).
+      if (ADMIN_ROLES.includes(auth.user.role) && workerUids.length) {
+        for (const uid of workerUids) {
+          if (uid === report.citizenId) continue;
+          notifyUser(uid, { title: `Report ${statusLabel}`, body: `${reportId} was updated by dispatch.`, kind: "status", reportId });
+        }
+      }
       if (nextStatus === REPORT_STATUSES.RESOLVED) {
+        publish("feedback:requested", { reportId, citizenId: report.citizenId }, { uids: [report.citizenId] });
+        notifyUser(report.citizenId, {
+          title: "How clean was the cleanup?",
+          body: `Rate the cleanup for ${reportId} to help us improve.`,
+          kind: "feedback", reportId,
+        });
         const citizen = await store.getUserByUid(report.citizenId);
         if (citizen) reportResolvedEmail({ email: citizen.email, name: citizen.name, reportId });
         dismissForReport(reportId); // auto-dismiss any proximity alert for this task
       }
-      publish("waste:status:update", { id: reportId, status: nextStatus });
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -669,18 +739,38 @@ export async function handleApiRequest(req, res) {
       const body = await readJson(req);
       const reportId = String(body.reportId || "");
       const teamId = String(body.teamId || "");
-      await store.assignTeam(reportId, teamId);
+      const before = await store.getReportById(reportId);
+      if (!before) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
+      if (["resolved", "rejected"].includes(before.status)) {
+        return json(res, 400, { error: { code: "ALREADY_CLOSED", message: "This report is already closed." } });
+      }
+      const team = (await store.getTeams()).find((t) => t.id === teamId);
+      if (!team) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
+      if ((team.memberIds || []).length === 0 && !team.leaderId) {
+        return json(res, 400, { error: { code: "EMPTY_TEAM", message: "This team has no workers to assign." } });
+      }
+      await store.assignTeam(reportId, teamId); // transactional: report -> assigned + team booked
       const report = await store.getReportById(reportId);
-      const teams = await store.getTeams();
-      const team = teams.find((t) => t.id === teamId);
-      await store.createNotification({ userId: report.citizenId, title: "Cleanup team assigned", body: `${team?.name || teamId} is now assigned to ${reportId}.` });
-      sendPushToUser(report.citizenId, {
+      const formatted = formatReportForClient(report);
+      // DB is updated — now tell the assigned workers in real time.
+      const memberUids = [...new Set([team.leaderId, ...(team.memberIds || [])].filter(Boolean))];
+      for (const uid of memberUids) {
+        notifyUser(uid, {
+          title: "New task assigned",
+          body: `${reportId} · ${formatted.address?.slice(0, 80) || "see details"}`,
+          kind: "assignment", reportId,
+          push: true,
+        });
+        publish("task:assigned", { reportId, teamId, teamName: team.name, report: formatted, at: nowIso() }, { uids: [uid] });
+      }
+      notifyUser(report.citizenId, {
         title: "Cleanup team assigned",
-        body: `${team?.name || teamId} is now assigned to ${reportId}. Tap to track live.`,
-        url: `/tracking?reportId=${reportId}`,
-        tag: reportId,
-      }).catch(() => {});
-      return json(res, 200, { report: formatReportForClient(report), team: team ? formatTeamForClient(team) : null });
+        body: `${team.name} is now assigned to ${reportId}.`,
+        kind: "info", reportId, push: true,
+      });
+      publish("waste:updated", { id: reportId, status: report.status, teamId }, { roles: [...ADMIN_ROLES] });
+      await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `assigned_team:${teamId}`, reportId });
+      return json(res, 200, { report: formatted, team: formatTeamForClient(team) });
     }
 
     if (pathname === "/api/notifications" && req.method === "GET") {
@@ -744,6 +834,8 @@ export async function handleApiRequest(req, res) {
     }
 
     if (pathname.match(/^\/api\/vehicles\/[^/]+\/location$/) && req.method === "POST") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
       const body = await readJson(req);
       const vehicleId = pathname.split("/")[3];
       const { latitude, longitude, label, speedKmh, heading, status } = body;
@@ -754,14 +846,16 @@ export async function handleApiRequest(req, res) {
     }
 
     if (pathname === "/api/reports/all" && req.method === "GET") {
-      const auth = await requireAuth(req, res);
+      // Full report list is an operations view — citizens/workers use their
+      // role-scoped endpoints instead.
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
       const state = await store.getState();
       return json(res, 200, { reports: state.reports.map(formatReportForClient) });
     }
 
     if (pathname === "/api/waste-hotspots" && req.method === "GET") {
-      const auth = await requireAuth(req, res);
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
       const state = await store.getState();
       const hotspots = state.reports.filter((r) => r.status !== "resolved" && r.status !== "rejected");
@@ -842,7 +936,7 @@ export async function handleApiRequest(req, res) {
       if (body.adminNotes !== undefined) updates.workerNotes = String(body.adminNotes);
       if (!Object.keys(updates).length) return json(res, 400, { error: { code: "VALIDATION", message: "No valid fields to update." } });
       const updated = await store.updateReport(reportId, updates);
-      publish("waste:updated", { id: reportId });
+      publish("waste:updated", { id: reportId }, { roles: [...ADMIN_ROLES] });
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -861,8 +955,8 @@ export async function handleApiRequest(req, res) {
       const citizen = await store.getUserByUid(report.citizenId);
       if (citizen) teamAssignedEmail({ email: citizen.email, name: citizen.name, reportId, teamName: team.name });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `assigned_${teamId}_to_${reportId}` });
-      publish("waste:updated", { id: reportId, teamId });
-      publish("team:update", { teamId });
+      publish("waste:updated", { id: reportId, teamId }, { roles: [...ADMIN_ROLES] });
+      publish("team:update", { teamId }, { roles: [...ADMIN_ROLES] });
 return json(res, 200, { report: formatReportForClient(report), team: formatTeamForClient(team) });
     }
 
@@ -881,8 +975,8 @@ return json(res, 200, { report: formatReportForClient(report), team: formatTeamF
       await store.createNotification({ userId: report.citizenId, title: "Complaint escalated", body: `${reportId} has been escalated for priority action.`, kind: "escalation", reportId });
       await store.createNotification({ userId: "user-admin", title: "Complaint escalated", body: `${auth.user.name} escalated ${reportId}.`, kind: "escalation", reportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `escalated_${reportId}` });
-      publish("complaint:escalated", { id: reportId });
-      publish("waste:updated", { id: reportId, escalated: true });
+      publish("complaint:escalated", { id: reportId }, { roles: [...ADMIN_ROLES] });
+      publish("waste:updated", { id: reportId, escalated: true }, { roles: [...ADMIN_ROLES] });
 return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -899,7 +993,7 @@ return json(res, 200, { report: formatReportForClient(updated) });
       const { report } = await store.markAsDuplicate(reportId, primaryReportId);
       await store.createNotification({ userId: report.citizenId, title: "Merged with existing complaint", body: `${reportId} was merged into ${primaryReportId}. You will get updates on the original complaint.`, kind: "duplicate", reportId: primaryReportId });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `marked_${reportId}_duplicate_of_${primaryReportId}` });
-      publish("waste:updated", { id: reportId, duplicateOf: primaryReportId });
+      publish("waste:updated", { id: reportId, duplicateOf: primaryReportId }, { roles: [...ADMIN_ROLES] });
 return json(res, 200, { ok: true, report: formatReportForClient(report) });
     }
 
@@ -914,7 +1008,7 @@ return json(res, 200, { ok: true, report: formatReportForClient(report) });
       const updated = await store.routeToRecycler(reportId, partner);
       if (!updated) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `routed_${reportId}_to_recycler_${partner}` });
-      publish("waste:updated", { id: reportId, recyclingPartner: partner });
+      publish("waste:updated", { id: reportId, recyclingPartner: partner }, { roles: [...ADMIN_ROLES] });
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
@@ -965,8 +1059,8 @@ return json(res, 200, { ok: true, report: formatReportForClient(report) });
       }
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `bulk_assigned_${assigned.length}_reports_to_${teamId}` });
       if (assigned.length) {
-        publish("waste:updated", { ids: reportIds, teamId });
-        publish("team:update", { teamId });
+        publish("waste:updated", { ids: reportIds, teamId }, { roles: [...ADMIN_ROLES] });
+        publish("team:update", { teamId }, { roles: [...ADMIN_ROLES] });
       }
 return json(res, 200, { assignedCount: assigned.length, reports: assigned, team: formatTeamForClient(team) });
     }
@@ -1009,7 +1103,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
         status: ["available", "assigned", "en_route", "off_duty"].includes(body.status) ? body.status : "available",
       });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `created_team_${team.id}` });
-      publish("team:update", { teamId: team.id });
+      publish("team:update", { teamId: team.id }, { roles: [...ADMIN_ROLES] });
       return json(res, 201, { team: formatTeamForClient(team) });
     }
 
@@ -1031,7 +1125,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       const team = await store.updateTeam(teamId, updates);
       if (!team) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `updated_team_${teamId}` });
-      publish("team:update", { teamId });
+      publish("team:update", { teamId }, { roles: [...ADMIN_ROLES] });
       return json(res, 200, { team: formatTeamForClient(team) });
     }
 
@@ -1043,7 +1137,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       if (!existing) return json(res, 404, { error: { code: "NOT_FOUND", message: "Team not found." } });
       await store.deleteTeam(teamId);
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `deleted_team_${teamId}` });
-      publish("team:deleted", { teamId });
+      publish("team:deleted", { teamId }, { roles: [...ADMIN_ROLES] });
       return json(res, 200, { ok: true });
     }
 
@@ -1055,7 +1149,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       if (!groupId) return json(res, 400, { error: { code: "VALIDATION", message: "Duplicate group id is required." } });
       const result = await store.dismissDuplicateGroup(groupId);
       await store.logActivity({ actor: auth.user.uid, role: auth.user.role, action: `dismissed_duplicate_group_${groupId}` });
-      publish("waste:updated", { dismissedGroup: groupId });
+      publish("waste:updated", { dismissedGroup: groupId }, { roles: [...ADMIN_ROLES] });
       return json(res, 200, result);
     }
 
@@ -1103,7 +1197,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       for (const r of mergedReports.filter((r) => r.duplicate?.primaryReportId === body.keepId)) {
         await store.createNotification({ userId: r.citizenId, title: "Merged with existing complaint", body: `${r.id} was confirmed as a duplicate of ${body.keepId}.`, kind: "duplicate", reportId: body.keepId });
       }
-      publish("waste:updated", { mergedGroup: body.groupId, keepId: body.keepId });
+      publish("waste:updated", { mergedGroup: body.groupId, keepId: body.keepId }, { roles: [...ADMIN_ROLES] });
       return json(res, 200, result);
     }
 
@@ -1186,12 +1280,28 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       if (!auth) return;
       const body = await readJson(req);
       const { reportId, reason } = body;
+      if (!reportId || !reason) return json(res, 400, { error: { code: "VALIDATION", message: "reportId and reason are required." } });
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
+      // Authorization: the worker may only flag reports assigned to their team.
+      const workerUids = await getAssignedWorkerUids(report);
+      if (!workerUids.includes(auth.user.uid)) {
+        return json(res, 403, { error: { code: "FORBIDDEN", message: "This report is not assigned to you." } });
+      }
       const updated = await store.updateWorkerReport(reportId, { rejectionReason: reason });
-      await store.createNotification({ userId: "user-admin", title: "Worker flagged issue", body: `Worker ${auth.user.name} flagged ${reportId}: ${reason}` });
+      publish("complaint:escalated", { id: reportId, reason }, { roles: [...ADMIN_ROLES] });
+      const adminUids = await getAdminUids();
+      for (const uid of adminUids) {
+        notifyUser(uid, {
+          title: "Worker flagged issue",
+          body: `${auth.user.name} flagged ${reportId}: ${String(reason).slice(0, 120)}`,
+          kind: "escalation", reportId,
+        });
+      }
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
-    // ---- Worker proximity alerts ----
+    // ---- Worker location pings: persist last-known position + live map feed ----
     if (pathname === "/api/worker/location" && req.method === "POST") {
       const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
       if (!auth) return;
@@ -1200,6 +1310,16 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
         return json(res, 400, { error: { code: "VALIDATION", message: "latitude and longitude are required." } });
       }
+      // Throttle DB writes (~1/minute/worker) — GPS fires far more often.
+      const now = Date.now();
+      const last = LOCATION_WRITE_TS.get(auth.user.uid) || 0;
+      if (now - last > 60_000) {
+        LOCATION_WRITE_TS.set(auth.user.uid, now);
+        store.saveWorkerLocation(auth.user.uid, latitude, longitude).catch((err) =>
+          console.error("[worker-location] persist failed:", err?.message));
+      }
+      // Live dispatch-map update for admins only — never broadcast publicly.
+      publish("worker:location", { workerId: auth.user.uid, name: auth.user.name, latitude, longitude, at: nowIso() }, { roles: [...ADMIN_ROLES] });
       const tasks = await store.getWorkerTasks(auth.user.uid); // open assigned tasks only
       const { raised } = updateWorkerLocation(auth.user.uid, { latitude, longitude }, tasks.map((t) => ({
         id: t.id,
@@ -1210,9 +1330,94 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
         severity: t.aiAnalysis?.severity,
       })));
       for (const alert of raised) {
-        publish("worker:proximity", { workerId: auth.user.uid, ...alert });
+        publish("worker:proximity", { workerId: auth.user.uid, ...alert }, { roles: [...ADMIN_ROLES] });
       }
       return json(res, 200, { ok: true, raised, activeAlerts: getProximityAlerts(auth.user.uid).length });
+    }
+
+    // ---- Nearby available workers for manual dispatch ----
+    if (pathname === "/api/admin/workers/nearby" && req.method === "GET") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const q = url.searchParams;
+      const latitude = Number(q.get("latitude")), longitude = Number(q.get("longitude"));
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return json(res, 400, { error: { code: "VALIDATION", message: "latitude and longitude query params are required." } });
+      }
+      const maxKm = Number(q.get("maxKm")) || 10;
+      const nearby = await store.getNearbyWorkers(latitude, longitude, maxKm);
+      const stats = await store.getWorkerStats();
+      const statByUid = new Map(stats.map((s) => [s.uid, s]));
+      return json(res, 200, {
+        workers: nearby.map((w) => {
+          const s = statByUid.get(w.uid) || {};
+          const activeTasks = Number(s.activeTasks) || 0;
+          return {
+            uid: w.uid,
+            name: w.name,
+            distanceKm: w.distanceKm,
+            dutyStatus: w.dutyStatus,
+            activeTasks,
+            completedTasks: Number(s.completedTasks) || 0,
+            // Assignable = on duty and not overloaded.
+            available: w.dutyStatus === "on_duty" && activeTasks < 3,
+            lastLocationAt: w.currentLocation?.at || null,
+          };
+        }),
+      });
+    }
+
+    // ---- Citizen feedback (post-resolution quality rating) ----
+    const feedbackMatch = pathname.match(/^\/api\/reports\/([^/]+)\/feedback$/);
+    if (feedbackMatch && req.method === "POST") {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      const reportId = decodeURIComponent(feedbackMatch[1]);
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
+      if (report.citizenId !== auth.user.uid) {
+        return json(res, 403, { error: { code: "FORBIDDEN", message: "Only the reporting citizen can leave feedback." } });
+      }
+      if (report.status !== REPORT_STATUSES.RESOLVED) {
+        return json(res, 400, { error: { code: "NOT_COMPLETED", message: "Feedback opens once the cleanup is completed." } });
+      }
+      if (report.feedbackRating != null) {
+        return json(res, 409, { error: { code: "ALREADY_FEEDBACK", message: "Feedback was already submitted for this report." } });
+      }
+      const body = await readJson(req);
+      const rating = Math.round(Number(body.rating));
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        return json(res, 400, { error: { code: "VALIDATION", message: "Rating must be an integer from 1 to 5." } });
+      }
+      const comment = String(body.comment || "").slice(0, 1000);
+      const updated = await store.updateReport(reportId, {
+        feedbackRating: rating,
+        feedbackComment: comment,
+        feedbackAt: nowIso(),
+      });
+      publish("feedback:submitted", { reportId, rating }, { roles: [...ADMIN_ROLES] });
+      const adminUids = await getAdminUids();
+      for (const uid of adminUids) {
+        notifyUser(uid, {
+          title: `Citizen rated ${reportId}`,
+          body: `${rating}/5${comment ? ` · "${comment.slice(0, 60)}"` : ""}`,
+          kind: "feedback", reportId,
+        });
+      }
+      return json(res, 200, { report: formatReportForClient(updated) });
+    }
+
+    if (feedbackMatch && req.method === "GET") {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      const reportId = decodeURIComponent(feedbackMatch[1]);
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
+      const isOwner = report.citizenId === auth.user.uid;
+      if (!isOwner && !ADMIN_ROLES.includes(auth.user.role)) {
+        return json(res, 403, { error: { code: "FORBIDDEN", message: "Not allowed." } });
+      }
+      return json(res, 200, { feedback: { rating: report.feedbackRating, comment: report.feedbackComment, at: report.feedbackAt } });
     }
 
     if (pathname === "/api/worker/proximity-alerts" && req.method === "GET") {

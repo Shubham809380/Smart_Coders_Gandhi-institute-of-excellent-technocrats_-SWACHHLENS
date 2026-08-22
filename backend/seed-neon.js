@@ -337,7 +337,18 @@ async function ensureDemoPasswords(client) {
   }
 }
 
+// Demo seeding gate: production databases must never auto-fill with fake
+// reports/accounts. Seeding runs only outside production, or explicitly via
+// SEED_DEMO_DATA=true (e.g. staging/demo deployments).
+const SEEDING_ALLOWED =
+  process.env.SEED_DEMO_DATA === "true" ||
+  (process.env.NODE_ENV !== "production" && process.env.SEED_DEMO_DATA !== "false");
+
 export async function seedDatabase() {
+  if (!SEEDING_ALLOWED) {
+    console.log("[seed] skipped (production / SEED_DEMO_DATA not enabled).");
+    return;
+  }
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -403,6 +414,7 @@ export async function seedDatabase() {
 }
 
 export async function seedVehicles() {
+  if (!SEEDING_ALLOWED) return;
   try {
     const existing = await query("SELECT COUNT(*) AS n FROM vehicles");
     if (Number(existing.rows[0].n) > 0) return;

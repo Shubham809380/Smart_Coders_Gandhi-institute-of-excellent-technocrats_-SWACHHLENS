@@ -3,16 +3,18 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { reportService, teamService } from '../../services.js';
 import GoogleMap from '../../components/GoogleMap.jsx';
 import { useTheme } from '../../contexts/ThemeContext.jsx';
-import { Box, IconButton, Button, keyframes } from '@mui/material';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
+import { useLive } from '../../hooks/useLive.js';
+import { Box, IconButton, Button, keyframes, TextField } from '@mui/material';
 import { ArrowBack as BackIcon, Home as HomeIcon } from '@mui/icons-material';
 
 const TIMELINE_STEPS = [
-  { key: 'submitted', label: 'Submitted', icon: 'flag' },
-  { key: 'ai_analyzed', label: 'AI Analysis', icon: 'smart_toy' },
-  { key: 'assigned', label: 'Team Dispatched', icon: 'group' },
-  { key: 'en_route', label: 'En Route', icon: 'route' },
-  { key: 'cleanup_in_progress', label: 'Cleanup in Progress', icon: 'cleaning_services' },
-  { key: 'resolved', label: 'Resolved', icon: 'check_circle' },
+  { key: 'submitted', icon: 'flag', tk: 'timelineStepSubmitted' },
+  { key: 'ai_analyzed', icon: 'smart_toy', tk: 'timelineStepAi' },
+  { key: 'assigned', icon: 'group', tk: 'timelineStepAssigned' },
+  { key: 'en_route', icon: 'route', tk: 'timelineStepEnRoute' },
+  { key: 'cleanup_in_progress', icon: 'cleaning_services', tk: 'timelineStepCleaning' },
+  { key: 'resolved', icon: 'check_circle', tk: 'timelineStepResolved' },
 ];
 const STATUS_TO_STEP = { submitted:0, ai_analyzed:1, under_review:1, assigned:2, en_route:3, cleanup_in_progress:4, verification:5, resolved:5 };
 
@@ -54,6 +56,7 @@ export default function TrackingCleanup() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDark } = useTheme();
+  const { t } = useLanguage();
   const [report, setReport] = useState(null);
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +64,12 @@ export default function TrackingCleanup() {
   const [displayAddress, setDisplayAddress] = useState('');
   const [addressExpanded, setAddressExpanded] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const pollRef = useRef(null);
+  // Feedback form state (only relevant once status === resolved).
+  const [rating, setRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [fbSubmitting, setFbSubmitting] = useState(false);
+  const [fbError, setFbError] = useState('');
 
   // Accept the report id from navigation state (in-app taps) or ?reportId=
   // query param (direct links, page refresh — state survives neither).
@@ -90,12 +98,37 @@ export default function TrackingCleanup() {
   }, [reportId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => {
-    if (!reportId || notFound || report?.status === 'resolved') return;
-    pollRef.current = setInterval(fetchData, 5000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [reportId, notFound, report?.status, fetchData]);
+
+  // Realtime updates: the server adds this client to the report:{id} room, so
+  // every lifecycle change (status, assignment, resolution) arrives as a push.
+  // The poll callback is a resilience net that only runs while disconnected —
+  // never alongside a healthy socket connection.
+  const { connected } = useLive(
+    useCallback((evt, payload) => {
+      const pid = payload?.reportId || payload?.id;
+      if (pid && pid !== reportId) return;
+      if (evt === 'waste:status:update' || evt === 'waste:updated' || evt === 'notification:new' || evt === 'feedback:requested') {
+        fetchData();
+      }
+    }, [reportId, fetchData]),
+    ['waste:status:update', 'waste:updated', 'notification:new', 'feedback:requested'],
+    { reportId, pollMs: 30000, poll: fetchData },
+  );
   useEffect(() => { if (!loading && report) { const t = setTimeout(() => setLoaded(true), rm?0:100); return () => clearTimeout(t); } }, [loading, report]);
+
+  const submitFeedback = async () => {
+    if (!rating) { setFbError(t('errorRateFirst')); return; }
+    setFbSubmitting(true);
+    setFbError('');
+    try {
+      const updated = await reportService.submitFeedback(reportId, { rating, comment: feedbackComment });
+      setReport(updated);
+    } catch (e) {
+      setFbError(e?.message || 'Failed to submit feedback.');
+    } finally {
+      setFbSubmitting(false);
+    }
+  };
 
   const currentStatus = report?.status || 'submitted';
   const timelineIdx = getTimelineIndex(currentStatus);
@@ -312,7 +345,7 @@ export default function TrackingCleanup() {
                     <Box sx={{ width:8, height:8, borderRadius:'50%', bgcolor:T.sevLow }} />
                     {!rm && <Box sx={{ position:'absolute', inset:-4, borderRadius:'50%', border:`1px solid ${T.sevLow}`, opacity:0, animation:`${pulseRing} 2.5s ease-out infinite` }} />}
                   </Box>
-                  <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:11, color:T.text }}>Tracking Active</span>
+                  <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:11, color:T.text }}>{connected ? t('trackingActive') : t('liveOffline')}</span>
                 </Box>
                 <Box sx={{ position:'absolute', top:10, right:10, bgcolor:T.glass, backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)',
                   border:`1px solid ${T.border}`, borderRadius:1.5, px:2, py:1, zIndex:10 }}>
@@ -335,7 +368,7 @@ export default function TrackingCleanup() {
             animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.3s both`,
           }}>
             <Box sx={{ display:'flex', justifyContent:'space-between', alignItems:'center', mb:2 }}>
-              <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text }}>Progress</span>
+              <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text }}>{t('trackingProgress')}</span>
               <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:13, fontWeight:700, color:T.sevLow }}>{progressPct}%</span>
             </Box>
             <Box sx={{ display:'flex', gap:0.75 }}>
@@ -364,7 +397,7 @@ export default function TrackingCleanup() {
             borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
             animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.35s both`,
           }}>
-            <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text, display:'block', mb:2.5 }}>Timeline</span>
+            <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text, display:'block', mb:2.5 }}>{t('trackingTimeline')}</span>
             {TIMELINE_STEPS.map((step, i) => {
               const isCompleted = i < timelineIdx;
               const isCurrent = i === timelineIdx;
@@ -419,14 +452,14 @@ export default function TrackingCleanup() {
                   <Box sx={{ pt:0.25, flex:1, minWidth:0 }}>
                     <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:2 }}>
                       <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:13, color: isCurrent ? T.sevLow : isCompleted ? T.text : T.muted }}>
-                        {step.label}
+                        {t(step.tk)}
                       </span>
                       {entry?.at && (
                         <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:10, color:T.muted, flexShrink:0 }}>{formatTime(entry.at)}</span>
                       )}
                     </Box>
                     {isCurrent && (
-                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:11, color:T.sevLow, display:'block', mt:0.5, fontWeight:500 }}>Current step</span>
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:11, color:T.sevLow, display:'block', mt:0.5, fontWeight:500 }}>{t('trackingCurrentStep')}</span>
                     )}
                   </Box>
                 </Box>
@@ -448,6 +481,95 @@ export default function TrackingCleanup() {
               </Box>
               <p style={{ fontFamily:'"Inter",sans-serif', fontSize:13, color:T.muted, lineHeight:1.7, margin:0 }}>{report.comment}</p>
             </Box>
+          )}
+
+          {/* ─── Feedback (resolved reports only) ─── */}
+          {currentStatus === 'resolved' && (
+            report?.feedbackRating ? (
+              <Box sx={{
+                bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+                border:`1px solid ${T.border}`, borderRadius:2, p:2.5,
+                borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+                animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.45s both`,
+              }}>
+                <Box sx={{ display:'flex', alignItems:'center', gap:1.5, mb:1.5 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:18, color:T.sevLow, fontVariationSettings:"'FILL' 1" }}>thumb_up</span>
+                  <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:13, color:T.text }}>{t('feedbackSubmittedTitle')}</span>
+                </Box>
+                <Box sx={{ display:'flex', alignItems:'center', gap:0.5 }}>
+                  {[1,2,3,4,5].map((v) => (
+                    <span key={v} className="material-symbols-outlined" style={{ fontSize:20, color: v <= report.feedbackRating ? '#F5A623' : T.muted, fontVariationSettings:"'FILL' 1" }}>star</span>
+                  ))}
+                  <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:11, color:T.muted, ml:1 }}>{report.feedbackRating}/5</span>
+                </Box>
+                {report.feedbackComment && (
+                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:12, color:T.muted, lineHeight:1.7, margin:'10px 0 0' }}>{report.feedbackComment}</p>
+                )}
+              </Box>
+            ) : (
+              <Box sx={{
+                bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+                border:`1px solid ${T.border}`, borderRadius:2, p:2.5,
+                borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+                animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.45s both`,
+              }}>
+                <Box sx={{ display:'flex', alignItems:'center', gap:1.5, mb:1 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:16, color:T.accent }}>rate_review</span>
+                  <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text }}>{t('feedbackTitle')}</span>
+                </Box>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:12, color:T.muted, lineHeight:1.6, margin:'0 0 12px' }}>{t('feedbackSubtitle')}</p>
+                <Box sx={{ display:'flex', gap:0.5, mb:1.5 }} role="radiogroup" aria-label={t('feedbackTitle')}>
+                  {[1,2,3,4,5].map((v) => (
+                    <IconButton
+                      key={v}
+                      onClick={() => { setRating(v); setFbError(''); }}
+                      onMouseEnter={() => setHoverRating(v)}
+                      onMouseLeave={() => setHoverRating(0)}
+                      size="small"
+                      aria-label={`${v} star`}
+                      aria-pressed={rating === v}
+                      sx={{ p:0.5, '&:focus-visible': { outline:`2px solid ${T.accent}`, outlineOffset:2 } }}
+                    >
+                      <span className="material-symbols-outlined" style={{
+                        fontSize:28,
+                        color: v <= (hoverRating || rating) ? '#F5A623' : (isDark ? '#3a4560' : '#B0B8C4'),
+                        fontVariationSettings:"'FILL' 1",
+                        transition:'color 0.15s ease',
+                      }}>star</span>
+                    </IconButton>
+                  ))}
+                </Box>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  size="small"
+                  value={feedbackComment}
+                  onChange={(e) => setFeedbackComment(e.target.value)}
+                  placeholder={t('feedbackCommentPlaceholder')}
+                  inputProps={{ maxLength: 1000 }}
+                  sx={{
+                    mb: fbError ? 1 : 1.5,
+                    '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13, color:T.text,
+                      '& fieldset': { borderColor:T.border },
+                      '&:hover fieldset': { borderColor:T.muted },
+                      '&.Mui-focused fieldset': { borderColor:T.accent } },
+                    '& .MuiInputBase-input::placeholder': { color:T.muted, opacity:1 },
+                    '& .MuiFormHelperText-root': { color:T.muted },
+                  }}
+                />
+                {fbError && (
+                  <span style={{ display:'block', fontFamily:'"Inter",sans-serif', fontSize:12, color:T.sevHigh, mb:1 }}>{fbError}</span>
+                )}
+                <Button variant="contained" fullWidth disabled={fbSubmitting} onClick={submitFeedback}
+                  sx={{ height:44, borderRadius:2, textTransform:'none', fontWeight:700, fontSize:13,
+                    fontFamily:'"Space Grotesk",sans-serif', bgcolor:T.sevLow,
+                    '&:hover': { bgcolor:T.sevLow }, '&:disabled': { opacity:0.6 },
+                    '&:focus-visible': { outline:`2px solid ${T.accent}`, outlineOffset:2 } }}>
+                  {fbSubmitting ? t('loading') : t('submitFeedback')}
+                </Button>
+              </Box>
+            )
           )}
 
           {/* ─── Back to Home ─── */}

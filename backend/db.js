@@ -208,5 +208,25 @@ export async function initDatabase() {
     await db.query("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status)");
     await db.query("CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at)");
     await db.query("CREATE INDEX IF NOT EXISTS idx_reports_priority ON reports(priority_score DESC)");
+    // Citizen feedback captured after a report reaches `resolved`.
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS feedback_rating INT");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS feedback_comment TEXT DEFAULT ''");
+    await db.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS feedback_at TIMESTAMPTZ");
+    // Last-known worker position (throttled writes) powers nearby-worker dispatch.
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS current_lat DOUBLE PRECISION");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS current_lng DOUBLE PRECISION");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_location_at TIMESTAMPTZ");
+    await db.query("CREATE INDEX IF NOT EXISTS idx_reports_citizen ON reports(citizen_id)");
+    await db.query("CREATE INDEX IF NOT EXISTS idx_reports_team ON reports(assigned_team_id)");
+    await db.query("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)");
+    // Web Push subscriptions (DDL was previously applied manually; make it declarative).
+    await db.query(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      endpoint TEXT UNIQUE NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
   } catch {}
 }

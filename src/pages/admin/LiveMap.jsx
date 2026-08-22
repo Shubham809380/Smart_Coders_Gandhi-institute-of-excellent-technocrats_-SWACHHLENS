@@ -33,7 +33,7 @@ export default function LiveMap() {
 
   useEffect(() => { load(); }, [load]);
 
-  const { connected } = useLive(() => load(), ["waste:created", "waste:updated", "waste:status:update"], { pollMs: 45000, poll: load });
+  const { connected } = useLive(() => load(), ["waste:new", "waste:updated", "waste:status:update", "worker:location"], { pollMs: 45000, poll: load });
 
   const topList = useMemo(() => reports.slice(0, 12), [reports]);
   const totalOpen = reports.length;

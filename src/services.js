@@ -509,8 +509,15 @@ export const reportService = {
     },
     async deleteReport(id) {
         await api(`/reports/${id}`, { method: "DELETE" });
-        state.reports = state.reports.filter((r) => r.id !== id);
+        state.reports = state.reports.filter((r) => r.id === id);
         return true;
+    },
+    async submitFeedback(id, { rating, comment } = {}) {
+        const data = await api(`/reports/${id}/feedback`, {
+            method: "POST",
+            body: JSON.stringify({ rating, comment: comment || "" }),
+        });
+        return data.report;
     },
 };
 
@@ -706,10 +713,10 @@ export const heartbeatService = {
 };
 
 export const profileService = {
-    async updateProfile({ name, phone }) {
+    async updateProfile({ name, phone, language } = {}) {
         const data = await api("/auth/profile", {
             method: "PUT",
-            body: JSON.stringify({ name, phone }),
+            body: JSON.stringify({ name, phone, language }),
         });
         state.currentUser = { ...state.currentUser, ...data.currentUser };
         persistClientState();

@@ -8,11 +8,13 @@ import {
 import {
   Edit, Notifications, NotificationsOff, LocationOn, LocationOff, Lock, Help, Info,
   Logout, ChevronRight, Assignment, CheckCircle, PendingActions, Star, ListAlt, TrackChanges,
-  Close, Save, Visibility, VisibilityOff, Shield, Engineering, Person, AdminPanelSettings,
+  Close, Save, Visibility, VisibilityOff, Shield, Engineering, Person, AdminPanelSettings, Translate,
 } from "@mui/icons-material";
 import BottomNav from "../../components/BottomNav.jsx";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import { useTheme } from "../../contexts/ThemeContext.jsx";
+import { useLanguage } from "../../contexts/LanguageContext.jsx";
+import { LANGUAGES } from "../../i18n/translations.js";
 import {
   reportService, authService, profileService, permissionService,
 } from "../../services.js";
@@ -76,6 +78,7 @@ function SettingsRow({ icon, iconColor, title, subtitle, action, onClick }) {
 export default function Profile() {
   const navigate = useNavigate();
   const { mode: themeMode, setThemeMode } = useTheme();
+  const { lang, setLang } = useLanguage();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -380,6 +383,36 @@ export default function Profile() {
                     }}
                   >
                     {opt.icon}
+                  </Box>
+                ))}
+              </Box>
+            }
+          />
+
+          <Divider variant="inset" component="li" sx={{ mx: 2.5 }} />
+
+          {/* Language Switcher */}
+          <SettingsRow
+            icon={<Translate sx={{ color: "secondary.main", fontSize: 20 }} />}
+            iconColor="secondary"
+            title="Language"
+            subtitle={LANGUAGES.find((l) => l.code === lang)?.native || "English"}
+            action={
+              <Box sx={{ display: 'flex', gap: 0, border: '1px solid', borderColor: 'grey.200', borderRadius: 2, p: 0.25 }}>
+                {LANGUAGES.map((opt) => (
+                  <Box
+                    key={opt.code}
+                    onClick={() => setLang(opt.code)}
+                    title={opt.label}
+                    sx={{
+                      px: 1, height: 28, borderRadius: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
+                      bgcolor: lang === opt.code ? 'primary.main' : 'transparent',
+                      color: lang === opt.code ? 'white' : 'grey.500',
+                      '&:hover': { bgcolor: lang === opt.code ? 'primary.main' : 'grey.100' },
+                    }}
+                  >
+                    {opt.native}
                   </Box>
                 ))}
               </Box>

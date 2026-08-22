@@ -18,14 +18,14 @@ let forwardFailures = 0;
 
 // Fire-and-forget: a sleeping/restarting Render instance must never break an
 // API mutation. Failures are logged sparsely to avoid noisy serverless logs.
-function forwardToSocketServer(event, payload) {
+function forwardToSocketServer(event, payload, targets) {
   if (!FORWARD_URL || !INTERNAL_SECRET) return;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   const request = fetch(FORWARD_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-internal-secret": INTERNAL_SECRET },
-    body: JSON.stringify({ event, payload }),
+    body: JSON.stringify(targets ? { event, payload, targets } : { event, payload }),
     signal: controller.signal,
   })
     .then((res) => {
@@ -70,8 +70,18 @@ export function subscribe(req, res) {
   });
 }
 
-export function publish(event, payload = {}) {
-  forwardToSocketServer(event, payload);
+/**
+ * Publishes a live event.
+ * @param {string} event event name (e.g. "waste:new")
+ * @param {object} payload safe-for-client data
+ * @param {{uids?: string[], roles?: string[], rooms?: string[]}} [targets]
+ *   When omitted the event is broadcast to every connected client (legacy
+ *   behaviour, used only for non-sensitive aggregate events). When present,
+ *   delivery is restricted to the union of the listed per-user rooms
+ *   ("user:{uid}"), role rooms ("role:{role}") and explicit rooms.
+ */
+export function publish(event, payload = {}, targets) {
+  forwardToSocketServer(event, payload, targets);
   const frame = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
   for (const client of clients) {
     try { client.res.write(frame); } catch {

@@ -126,13 +126,34 @@ app.post("/internal/emit", (req, res) => {
     console.warn("[socket-server] rejected /internal/emit: bad secret");
     return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Invalid internal secret." } });
   }
-  const { event, payload } = req.body || {};
+  const { event, payload, targets } = req.body || {};
   if (typeof event !== "string" || !EVENT_NAME_RE.test(event)) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid event name." } });
   }
   try {
-    io.emit(event, payload ?? {});
-    return res.status(200).json({ ok: true, event, deliveredTo: io.engine.clientsCount ?? 0 });
+    let deliveredTo = 0;
+    if (targets && typeof targets === "object") {
+      const rooms = [];
+      for (const uid of Array.isArray(targets.uids) ? targets.uids : []) {
+        if (typeof uid === "string" && uid) rooms.push(`user:${uid}`);
+      }
+      for (const role of Array.isArray(targets.roles) ? targets.roles : []) {
+        if (typeof role === "string" && role) rooms.push(`role:${role}`);
+      }
+      for (const room of Array.isArray(targets.rooms) ? targets.rooms : []) {
+        if (typeof room === "string" && room) rooms.push(room);
+      }
+      const unique = [...new Set(rooms)];
+      for (const room of unique) {
+        deliveredTo += io.to(room).emit(event, payload ?? {});
+      }
+      console.log(`[socket] emit ${event} -> rooms=[${unique.join(", ")}] deliveries=${deliveredTo}`);
+    } else {
+      io.emit(event, payload ?? {});
+      deliveredTo = io.engine.clientsCount ?? 0;
+      console.log(`[socket] emit ${event} -> broadcast deliveries=${deliveredTo}`);
+    }
+    return res.status(200).json({ ok: true, event, deliveredTo });
   } catch (err) {
     console.error("[socket-server] emit failed:", event, err?.message);
     return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Emit failed." } });
@@ -160,12 +181,61 @@ io.use(async (socket, next) => {
 });
 
 // --- Connection lifecycle -----------------------------------------------------
-// Live events are global broadcasts today (same semantics as the previous SSE
-// hub), so the server only fans out; no client->server events are accepted.
+// Every authenticated socket is placed into:
+//   user:{uid}  – private per-user delivery (notifications, task assignments)
+//   role:{role} – role broadcast group (e.g. every admin variant shares role:admin)
+// Clients may additionally join report:{reportId} rooms via "report:watch"
+// after the server verifies they are allowed to see that report.
+const REPORT_WATCHERS = new Map(); // socket.id -> Set(reportId) for cleanup
+
 io.on("connection", (socket) => {
-  console.log(`[socket] connected id=${socket.id} uid=${socket.data.uid} role=${socket.data.role} total=${io.engine.clientsCount}`);
+  const { uid, role } = socket.data;
+  const rolesToJoin = [role];
+  if (["admin", "super_admin", "ward_officer", "sanitation_supervisor"].includes(role)) {
+    rolesToJoin.push("admin");
+  }
+  for (const r of rolesToJoin) {
+    if (r) socket.join(`role:${r}`);
+  }
+  if (uid) socket.join(`user:${uid}`);
+  console.log(`[socket] connected id=${socket.id} uid=${uid} role=${role} total=${io.engine.clientsCount}`);
+
+  // Live tracking opt-in: citizen watching own report, worker on assigned team,
+  // or any admin. DB-checked on every subscribe so permissions stay current.
+  socket.on("report:watch", async (data, ack) => {
+    try {
+      const reportId = String(data?.reportId || "");
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(reportId)) throw new Error("invalid id");
+      const report = await store.getReportById(reportId);
+      if (!report) throw new Error("not found");
+      let allowed = rolesToJoin.includes("admin");
+      if (!allowed && uid && report.citizenId === uid) allowed = true;
+      if (!allowed && uid && report.assignedTeamId) {
+        const team = await store.getTeamById(report.assignedTeamId);
+        allowed = Boolean(team && (team.leaderId === uid || (team.memberIds || []).includes(uid)));
+      }
+      if (!allowed) throw new Error("forbidden");
+      const room = `report:${reportId}`;
+      socket.join(room);
+      if (!REPORT_WATCHERS.has(socket.id)) REPORT_WATCHERS.set(socket.id, new Set());
+      REPORT_WATCHERS.get(socket.id).add(reportId);
+      console.log(`[socket] watch ${room} by ${socket.id} (${role})`);
+      if (typeof ack === "function") ack({ ok: true });
+    } catch (err) {
+      console.warn(`[socket] report:watch denied for ${socket.id}: ${err?.message}`);
+      if (typeof ack === "function") ack({ ok: false, error: err?.message || "denied" });
+    }
+  });
+
+  socket.on("report:unwatch", (data) => {
+    const reportId = String(data?.reportId || "");
+    if (!reportId) return;
+    socket.leave(`report:${reportId}`);
+    REPORT_WATCHERS.get(socket.id)?.delete(reportId);
+  });
 
   socket.once("disconnect", (reason) => {
+    REPORT_WATCHERS.delete(socket.id);
     console.log(`[socket] disconnected id=${socket.id} uid=${socket.data.uid} reason=${reason} total=${io.engine.clientsCount}`);
   });
 });

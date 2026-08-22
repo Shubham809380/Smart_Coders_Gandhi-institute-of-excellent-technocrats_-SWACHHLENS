@@ -8,6 +8,9 @@ function rowToUser(row) {
     role: row.role, wardId: row.ward_id, isActive: row.is_active,
     language: row.language, locationName: row.location_name, photoURL: row.photo_url,
     dutyStatus: row.duty_status || "off_duty",
+    currentLocation: row.current_lat != null && row.current_lng != null
+      ? { latitude: Number(row.current_lat), longitude: Number(row.current_lng), at: row.last_location_at }
+      : null,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
@@ -37,6 +40,9 @@ function rowToReport(row) {
     actualVolume: row.actual_volume || "",
     escalated: Boolean(row.escalated),
     escalatedAt: row.escalated_at || null,
+    feedbackRating: row.feedback_rating ?? null,
+    feedbackComment: row.feedback_comment || "",
+    feedbackAt: row.feedback_at || null,
     recyclingStatus: row.recycling_status || "",
     recyclingPartner: row.recycling_partner || "",
     recyclingRoutedAt: row.recycling_routed_at || null,
@@ -219,6 +225,7 @@ export const store = {
       duplicateGroupDismissed: "duplicate_group_dismissed",
       aiAfterAnalysis: "ai_after_analysis",
       statusTimeline: "status_timeline",
+      feedbackRating: "feedback_rating", feedbackComment: "feedback_comment", feedbackAt: "feedback_at",
     };
 
     for (const [key, val] of Object.entries(updates)) {
@@ -848,5 +855,32 @@ export const store = {
     values.push(reportId);
     await query(`UPDATE reports SET ${setClauses.join(", ")} WHERE id = $${i}`, values);
     return this.getReportById(reportId);
+  },
+
+  // Throttled by the caller; keeps the last-known position for dispatch queries.
+  async saveWorkerLocation(uid, latitude, longitude) {
+    await query(
+      "UPDATE users SET current_lat = $1, current_lng = $2, last_location_at = NOW(), updated_at = NOW() WHERE uid = $3",
+      [latitude, longitude, uid]
+    );
+  },
+
+  // On-duty workers with a fresh GPS fix, nearest to the given point.
+  async getNearbyWorkers(latitude, longitude, maxKm = 10) {
+    const res = await query(
+      `SELECT u.*, 
+              (6371 * acos(least(1, greatest(-1,
+                cos(radians($1)) * cos(radians(current_lat)) * cos(radians(current_lng) - radians($2))
+                + sin(radians($1)) * sin(radians(current_lat)))))) AS distance_km
+       FROM users u
+       WHERE u.role = 'cleanup_worker' AND u.is_active <> false
+         AND u.current_lat IS NOT NULL AND u.current_lng IS NOT NULL
+         AND u.last_location_at > NOW() - INTERVAL '2 hours'
+       ORDER BY distance_km ASC`,
+      [latitude, longitude]
+    );
+    return res.rows
+      .map((row) => ({ ...rowToUser(row), distanceKm: Math.round(Number(row.distance_km) * 100) / 100 }))
+      .filter((w) => w.distanceKm <= maxKm);
   },
 };
