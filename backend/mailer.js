@@ -1,3 +1,5 @@
+import { waitUntil } from "@vercel/functions";
+
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 const RESEND_API_URL = "https://api.resend.com/emails";
 
@@ -93,7 +95,9 @@ export function sendEmail({ to, subject, title = "", html = "" }) {
     subject,
     html: brandWrapper(title || subject, html),
   };
-  return sendRaw(payload).then(
+  // On serverless runtimes the function freezes once the response is sent;
+  // waitUntil keeps this email fetch alive. Locally it is a harmless no-op.
+  const send = sendRaw(payload).then(
     (data) => {
       console.log(`[email] Sent via ${activeEmailProvider()} "${subject}" to ${to} (id: ${data?.id || data?.messageId || "ok"})`);
       return data;
@@ -103,6 +107,8 @@ export function sendEmail({ to, subject, title = "", html = "" }) {
       return null;
     }
   );
+  try { waitUntil(send); } catch { /* long-lived process: nothing needed */ }
+  return send;
 }
 
 export function welcomeEmail(user) {
