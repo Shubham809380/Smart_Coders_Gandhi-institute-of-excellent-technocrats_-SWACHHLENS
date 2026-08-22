@@ -1,28 +1,24 @@
+# Realtime service only.
+# Frontend + AI/API stay on Vercel (serverless); Socket.IO lives here because
+# it needs a persistent connection, which serverless platforms cannot provide.
 services:
   - type: web
-    name: swachhlens-api
+    name: swachhlens-socket
     runtime: node
     plan: free
+    rootDir: .
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: npm run start:socket
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
-      - key: AUTH_PROVIDER
-        value: neon
-      - key: AI_PROVIDER
-        value: mock
+      # Comma-separated list of allowed browser origins (no trailing slash).
+      - key: FRONTEND_URL
+        sync: false
+      # Shared secret with the Vercel API for the /internal/emit event bridge.
+      - key: INTERNAL_API_SECRET
+        generateValue: true
       - key: DATABASE_URL
         sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: JWT_SECRET
-        generateValue: true
-      - key: YOLO_ENDPOINT_URL
-        value: ""
-      - key: YOLO_API_KEY
-        value: ""

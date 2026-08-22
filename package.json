@@ -12,6 +12,8 @@
         "build": "vite build",
         "preview": "node server.js",
         "start": "node server.js",
+        "start:socket": "node socket-server/index.js",
+        "dev:socket": "node socket-server/index.js --port 3001",
         "start:all": "concurrently -n ai,api,web -c magenta,cyan,green \"cd swachhlens-ai && python main.py\" \"node server.js --port 3000\" \"vite\""
     },
     "dependencies": {
