@@ -1,7 +1,22 @@
+const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 const RESEND_API_URL = "https://api.resend.com/emails";
 
+// Provider auto-detection: Brevo wins when its key is present, otherwise
+// falls back to Resend. No code change needed to switch providers.
+export function activeEmailProvider() {
+  if (process.env.BREVO_API_KEY) return "brevo";
+  if (process.env.RESEND_API_KEY) return "resend";
+  return null;
+}
+
+function parseFromAddress(from) {
+  const match = String(from || "").match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (match) return { name: match[1].replace(/^["']|["']$/g, ""), email: match[2] };
+  return { name: "", email: String(from || "") };
+}
+
 export function isEmailEnabled() {
-  return Boolean(process.env.RESEND_API_KEY);
+  return Boolean(activeEmailProvider());
 }
 
 function brandWrapper(title, bodyHtml) {
@@ -23,7 +38,30 @@ function brandWrapper(title, bodyHtml) {
 </html>`;
 }
 
-async function sendRaw(payload) {
+async function sendViaBrevo(payload) {
+  const from = parseFromAddress(payload.from);
+  const res = await fetch(BREVO_API_URL, {
+    method: "POST",
+    headers: {
+      "api-key": process.env.BREVO_API_KEY,
+      "Content-Type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: from.name || "SwachhLens", email: from.email },
+      to: (payload.to || []).map((email) => ({ email })),
+      subject: payload.subject,
+      htmlContent: payload.html,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Brevo ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return res.json();
+}
+
+async function sendViaResend(payload) {
   const res = await fetch(RESEND_API_URL, {
     method: "POST",
     headers: {
@@ -39,9 +77,15 @@ async function sendRaw(payload) {
   return res.json();
 }
 
+function sendRaw(payload) {
+  const provider = activeEmailProvider();
+  if (provider === "brevo") return sendViaBrevo(payload);
+  if (provider === "resend") return sendViaResend(payload);
+  return Promise.resolve(null);
+}
+
 export function sendEmail({ to, subject, title = "", html = "" }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey || !to || !subject) return Promise.resolve(null);
+  if (!activeEmailProvider() || !to || !subject) return Promise.resolve(null);
   if (String(to).endsWith("@swachhlens.app")) return Promise.resolve(null);
   const payload = {
     from: process.env.EMAIL_FROM || "SwachhLens <onboarding@resend.dev>",
@@ -51,7 +95,7 @@ export function sendEmail({ to, subject, title = "", html = "" }) {
   };
   return sendRaw(payload).then(
     (data) => {
-      console.log(`[email] Sent "${subject}" to ${to} (id: ${data.id})`);
+      console.log(`[email] Sent via ${activeEmailProvider()} "${subject}" to ${to} (id: ${data?.id || data?.messageId || "ok"})`);
       return data;
     },
     (err) => {
