@@ -91,8 +91,8 @@ export default function LiveMap() {
                   height="100%"
                   onPinClick={(report) => setFocusId(report.id)}
                 />
-                {/* Legend */}
-                <div className="absolute bottom-4 left-4 z-[500] adm-card px-3 py-2.5 text-[11px] space-y-1.5 pointer-events-none">
+                {/* Legend — anchored to the map container (parent is relative), never the viewport */}
+                <div className="absolute bottom-4 left-4 z-[500] adm-card px-3 py-2.5 text-[11px] space-y-1.5 pointer-events-none max-w-[calc(100%-2rem)]">
                   <p className="font-bold uppercase tracking-widest adm-muted text-[9px]">Density</p>
                   <div className="flex items-center gap-1.5">
                     <span className="w-24 h-2 rounded-full" style={{ background: "linear-gradient(90deg, #1A6B9E, #00A896, #D9A40E, #F0763B, #E5484D)" }} />

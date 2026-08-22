@@ -61,7 +61,7 @@ function createVehicleIcon(color) {
   });
 }
 
-export default function GoogleMap({ center = DEFAULT_CENTER, zoom = 14, markers = [], userLocation = null, vehicles = [], onMarkerClick, onMarkerHover, className = '', onMapReady }) {
+export default function GoogleMap({ center = DEFAULT_CENTER, zoom = 14, markers = [], userLocation = null, vehicles = [], onMarkerClick, onMarkerHover, onMapClick, className = '', onMapReady }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const hotspotLayerRef = useRef(null);
@@ -69,12 +69,14 @@ export default function GoogleMap({ center = DEFAULT_CENTER, zoom = 14, markers 
   const vehicleLayerRef = useRef(null);
   const onMarkerClickRef = useRef(onMarkerClick);
   const onMarkerHoverRef = useRef(onMarkerHover);
+  const onMapClickRef = useRef(onMapClick);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState('');
   const [retryNonce, setRetryNonce] = useState(0);
 
   onMarkerClickRef.current = onMarkerClick;
   onMarkerHoverRef.current = onMarkerHover;
+  onMapClickRef.current = onMapClick;
 
   useEffect(() => {
     if (!containerRef.current) return undefined;
@@ -161,6 +163,18 @@ export default function GoogleMap({ center = DEFAULT_CENTER, zoom = 14, markers 
       userMarkerRef.current.setLatLng([Number(userLocation.lat), Number(userLocation.lng)]);
     }
   }, [userLocation, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return undefined;
+    const handler = (e) => {
+      // Ignore clicks that landed on a marker/popup — Leaflet fires map click too.
+      if (e?.originalEvent?.defaultPrevented) return;
+      onMapClickRef.current?.();
+    };
+    map.on('click', handler);
+    return () => map.off('click', handler);
+  }, [mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -311,6 +311,7 @@ export default function ExploreMap() {
           userLocation={userLocation}
           vehicles={vehicleMarkers}
           onMarkerClick={handleMarkerClick}
+          onMapClick={() => setSelectedReport(null)}
           onMapReady={handleMapReady}
           className="w-full h-full"
         />

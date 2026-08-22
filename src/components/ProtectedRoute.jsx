@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import { authService, appService } from "../services.js";
 import { APP_STATES } from "../data.js";
 
-function ReconnectingScreen() {
+export function ReconnectingScreen() {
   const handleRetry = async () => {
     const snap = await appService.retryInitialization();
     if (snap.appState !== APP_STATES.RECONNECTING) window.location.reload();

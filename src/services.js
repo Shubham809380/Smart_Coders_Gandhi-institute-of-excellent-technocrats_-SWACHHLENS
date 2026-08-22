@@ -71,7 +71,7 @@ async function api(path, options = {}) {
     const headers = { "Content-Type": "application/json; charset=utf-8" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs || 30000);
     let res;
     try {
         res = await fetch(`${API_BASE}${path}`, { ...options, headers: { ...headers, ...options.headers }, signal: controller.signal });
@@ -166,35 +166,38 @@ export const appService = {
     async initialize() {
         const startedAt = Date.now();
         state.startup = { appState: APP_STATES.INITIALIZING, loading: true, error: "" };
-        const token = getToken();
-        if (token) {
-            let lastErr = null;
-            for (let attempt = 0; attempt < 5; attempt++) {
-                try {
-                    const data = await api("/auth/me");
-                    state.currentUser = data.currentUser;
-                    const appState = data.role && data.role !== "citizen" ? APP_STATES.AUTHENTICATED_ADMIN : APP_STATES.AUTHENTICATED_CITIZEN;
-                    state.startup = { appState, loading: false, error: "" };
-                    lastErr = null;
-                    break;
-                } catch (err) {
-                    lastErr = err;
-                    if (attempt < 4) await delay(Math.min(1500 * (attempt + 1), 8000));
-                }
+    const token = getToken();
+    if (token) {
+        let lastErr = null;
+        // Boot must fail FAST: 3 attempts x 8s timeout with short backoff (~30s worst case),
+        // never hold the user on the splash screen for minutes.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const data = await api("/auth/me", { timeoutMs: 8000 });
+                state.currentUser = data.currentUser;
+                const appState = data.role && data.role !== "citizen" ? APP_STATES.AUTHENTICATED_ADMIN : APP_STATES.AUTHENTICATED_CITIZEN;
+                state.startup = { appState, loading: false, error: "" };
+                lastErr = null;
+                break;
+            } catch (err) {
+                lastErr = err;
+                console.warn(`[boot] session restore attempt ${attempt + 1}/3 failed:`, err?.message || err);
+                if (attempt < 2) await delay(1500 * (attempt + 1));
             }
-            if (lastErr) {
-                const msg = String(lastErr?.message || "");
-                const is401 = msg.includes("401") || msg.includes("Unauthorized") || msg.includes("sign in") || msg.includes("Please sign in");
-                if (is401) {
-                    setToken("");
-                    state.currentUser = null;
-                    try { sessionStorage.setItem(SESSION_EXPIRED_KEY, "1"); } catch {}
-                    state.startup = { appState: APP_STATES.UNAUTHENTICATED, loading: false, error: "" };
-                } else {
-                    state.startup = { appState: APP_STATES.RECONNECTING, loading: false, error: "Server is waking up. Retrying..." };
-                }
+        }
+        if (lastErr) {
+            const msg = String(lastErr?.message || "");
+            const is401 = msg.includes("401") || msg.includes("Unauthorized") || msg.includes("sign in") || msg.includes("Please sign in");
+            if (is401) {
+                setToken("");
+                state.currentUser = null;
+                try { sessionStorage.setItem(SESSION_EXPIRED_KEY, "1"); } catch {}
+                state.startup = { appState: APP_STATES.UNAUTHENTICATED, loading: false, error: "" };
+            } else {
+                state.startup = { appState: APP_STATES.RECONNECTING, loading: false, error: "Server is waking up. Retrying..." };
             }
-        } else {
+        }
+    } else {
             state.startup = { appState: APP_STATES.UNAUTHENTICATED, loading: false, error: "" };
         }
         await delay(Math.max(0, MIN_SPLASH_MS - (Date.now() - startedAt)));
@@ -454,6 +457,22 @@ export const aiService = {
         });
         return data;
     },
+    // Worker-only: Gemini before/after cleanup verification + disposal guidance.
+    async verifyCleanup({ reportId, afterImage, wasteType, comment }) {
+        const data = await api("/ai/verify-cleanup", {
+            method: "POST",
+            body: JSON.stringify({ reportId, afterImage, wasteType, comment }),
+        });
+        return data;
+    },
+    // Worker-only: detect dustbin/waste-stream type from a photo.
+    async detectBinType({ image, wasteType }) {
+        const data = await api("/ai/bin-type", {
+            method: "POST",
+            body: JSON.stringify({ image, wasteType }),
+        });
+        return data;
+    },
 };
 
 export const teamService = {
@@ -671,6 +690,23 @@ export const workerService = {
     async reportIssue(reportId, reason) {
         const data = await api("/worker/report-issue", { method: "POST", body: JSON.stringify({ reportId, reason }) });
         return data.report;
+    },
+    // Proximity alerts: ping location, list/dismiss active alerts.
+    async pingLocation(latitude, longitude) {
+        const data = await api("/worker/location", { method: "POST", body: JSON.stringify({ latitude, longitude }) });
+        return data;
+    },
+    async getProximityAlerts() {
+        const data = await api("/worker/proximity-alerts");
+        return data.alerts || [];
+    },
+    async dismissProximityAlert(reportId) {
+        await api(`/worker/proximity-alerts/${encodeURIComponent(reportId)}/dismiss`, { method: "POST" });
+        return true;
+    },
+    async dismissAllProximityAlerts() {
+        const data = await api("/worker/proximity-alerts/dismiss-all", { method: "POST" });
+        return data.removed || 0;
     },
 };
 

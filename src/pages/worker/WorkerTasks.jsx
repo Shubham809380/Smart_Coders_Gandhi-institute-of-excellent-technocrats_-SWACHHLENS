@@ -31,6 +31,7 @@ export default function WorkerTasks() {
   const [workerLoc, setWorkerLoc] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [userName, setUserName] = useState("");
+  const [alertCount, setAlertCount] = useState(0);
   const touchStartY = useRef(0);
   const containerRef = useRef(null);
 
@@ -49,6 +50,19 @@ export default function WorkerTasks() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const alerts = await workerService.getProximityAlerts();
+        if (!cancelled) setAlertCount(alerts.length);
+      } catch {}
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  useEffect(() => {
     if (!navigator.geolocation) return;
     let settled = false;
     const timeoutId = setTimeout(function () {
@@ -60,6 +74,7 @@ export default function WorkerTasks() {
           settled = true;
           clearTimeout(timeoutId);
           setWorkerLoc({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+          workerService.pingLocation(pos.coords.latitude, pos.coords.longitude).catch(() => {});
         }
       },
       () => { if (!settled) { settled = true; clearTimeout(timeoutId); setWorkerLoc(null); } },
@@ -109,6 +124,18 @@ export default function WorkerTasks() {
                 </div>
               </div>
             </div>
+            <button
+              onClick={() => navigate("/worker/map")}
+              aria-label="Proximity alerts"
+              className="relative w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 active:bg-gray-200 transition-colors mr-2"
+            >
+              <span className="material-symbols-outlined text-gray-600 text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>notifications</span>
+              {alertCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center">
+                  {alertCount > 9 ? "9+" : alertCount}
+                </span>
+              )}
+            </button>
             <button onClick={onRefresh} className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 active:bg-gray-200 transition-colors">
               <span className={`material-symbols-outlined text-gray-600 text-[22px] ${refreshing ? "animate-spin" : ""}`}>refresh</span>
             </button>

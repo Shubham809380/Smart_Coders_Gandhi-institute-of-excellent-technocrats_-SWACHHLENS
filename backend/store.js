@@ -585,6 +585,8 @@ export const store = {
       openCurRes, openPrevRes, avgResCurRes, avgResPrevRes,
       escCurRes, escPrevRes, resTodayRes, resYesterdayRes, criticalOpenRes,
       resolutionBucketsRes, hotspotGrowthRes, recyclableRes,
+      topCitizensRes, reportersRes, citizensCountRes, dupRes,
+      slaRes, breachRes, teamPerfRes,
     ] = await Promise.all([
       query("SELECT COUNT(*)::int AS total FROM reports"),
       query("SELECT status, COUNT(*)::int AS count FROM reports GROUP BY status ORDER BY count DESC"),
@@ -632,6 +634,27 @@ export const store = {
         WHERE r.created_at > NOW() - INTERVAL '42 days'
         GROUP BY tz.zone, week_start ORDER BY week_start ASC, tz.zone ASC`),
       query("SELECT COUNT(*)::int AS n FROM reports WHERE ai_recyclable_heavy = true AND status != 'duplicate' AND recycling_status = ''"),
+      // ---- Role-wise: citizen engagement ----
+      query(`SELECT u.uid, u.name, u.email, COUNT(r.id)::int AS reports,
+               SUM(CASE WHEN r.status = 'resolved' THEN 1 ELSE 0 END)::int AS resolved
+             FROM reports r JOIN users u ON r.citizen_id = u.uid
+             GROUP BY u.uid, u.name, u.email ORDER BY reports DESC LIMIT 5`),
+      query("SELECT COUNT(DISTINCT citizen_id)::int AS n FROM reports"),
+      query("SELECT COUNT(*)::int AS n FROM users WHERE role = 'citizen'"),
+      query("SELECT COUNT(*)::int AS n FROM reports WHERE status = 'duplicate'"),
+      // ---- Role-wise: SLA compliance (24h target, resolved last 30d) ----
+      query(`SELECT COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (updated_at - created_at)) <= 86400)::int AS within_sla,
+               COUNT(*)::int AS total
+             FROM reports WHERE status = 'resolved' AND updated_at > NOW() - INTERVAL '30 days'`),
+      query(`SELECT COUNT(*)::int AS n FROM reports
+             WHERE status NOT IN ('resolved','rejected','duplicate') AND created_at < NOW() - INTERVAL '48 hours'`),
+      // ---- Role-wise: per-team performance ----
+      query(`SELECT t.name,
+               COUNT(r.id)::int AS assigned,
+               SUM(CASE WHEN r.status = 'resolved' THEN 1 ELSE 0 END)::int AS resolved,
+               COALESCE(AVG(CASE WHEN r.status = 'resolved' THEN EXTRACT(EPOCH FROM (r.updated_at - r.created_at))/60 END), 0)::int AS avg_mins
+             FROM teams t LEFT JOIN reports r ON r.assigned_team_id = t.id
+             GROUP BY t.id, t.name ORDER BY assigned DESC, t.name ASC`),
     ]);
 
     const trend = (current, previous) => {
@@ -658,6 +681,38 @@ export const store = {
       },
       resolutionBuckets: resolutionBucketsRes.rows.map((r) => ({ bucket: r.bucket, count: Number(r.count) })),
       hotspotGrowth: hotspotGrowthRes.rows.map((r) => ({ zone: r.zone, week: r.week_start, count: Number(r.count) })),
+      // ---- Role-wise breakdowns (all computed live from DB) ----
+      citizens: {
+        totalReporters: Number(reportersRes.rows[0]?.n || 0),
+        totalCitizens: Number(citizensCountRes.rows[0]?.n || 0),
+        topContributors: topCitizensRes.rows.map((r) => ({
+          uid: r.uid, name: r.name || "Citizen", email: r.email || "",
+          reports: Number(r.reports || 0), resolved: Number(r.resolved || 0),
+        })),
+      },
+      sla: {
+        resolvedWithin24hPct: (() => {
+          const w = Number(slaRes.rows[0]?.within_sla || 0);
+          const t = Number(slaRes.rows[0]?.total || 0);
+          return t ? Math.round((w / t) * 100) : null;
+        })(),
+        openBreached48h: Number(breachRes.rows[0]?.n || 0),
+      },
+      duplicateRatePct: (() => {
+        const total = Number(totalRes.rows[0]?.total || 0);
+        return total ? Math.round((Number(dupRes.rows[0]?.n || 0) / total) * 100) : 0;
+      })(),
+      teamPerformance: teamPerfRes.rows.map((r) => {
+        const assigned = Number(r.assigned || 0);
+        const resolved = Number(r.resolved || 0);
+        return {
+          name: r.name,
+          assigned,
+          resolved,
+          resolutionRatePct: assigned ? Math.round((resolved / assigned) * 100) : 0,
+          avgResolutionMins: Number(r.avg_mins || 0),
+        };
+      }),
     };
   },
 

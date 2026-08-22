@@ -133,7 +133,51 @@
     --adm-ok: #34C77B;
     --adm-warn: #F5A623;
     --adm-danger: #E5484D;
+
+    color-scheme: dark;
 }
+
+/* ------------------------------------------------------------------
+   Dark-mode remapping for legacy hardcoded light-mode utilities.
+   Citizen/worker screens were built light-first with raw Tailwind
+   grays/whites. Instead of editing 30+ files, remap the handful of
+   utilities to theme vars so EVERY screen follows data-theme.
+   ------------------------------------------------------------------ */
+[data-theme="dark"] .bg-white { background-color: var(--surface); }
+[data-theme="dark"] .bg-white\/95,
+[data-theme="dark"] .bg-white\/90,
+[data-theme="dark"] .bg-white\/88 { background-color: color-mix(in srgb, var(--surface) 92%, transparent); }
+[data-theme="dark"] .bg-gray-50 { background-color: var(--surface-container-low); }
+[data-theme="dark"] .bg-gray-100 { background-color: var(--surface-container); }
+[data-theme="dark"] .hover\:bg-gray-50:hover { background-color: var(--surface-container); }
+[data-theme="dark"] .active\:bg-gray-50:active { background-color: var(--surface-container); }
+
+[data-theme="dark"] .text-gray-900,
+[data-theme="dark"] .text-gray-800 { color: var(--text); }
+[data-theme="dark"] .group:hover .group-hover\:text-gray-900,
+[data-theme="dark"] .group:hover .group-hover\:text-gray-700 { color: var(--text); }
+[data-theme="dark"] .text-gray-700,
+[data-theme="dark"] .text-gray-600,
+[data-theme="dark"] .text-gray-500,
+[data-theme="dark"] .text-gray-400 { color: var(--muted); }
+
+[data-theme="dark"] .border-gray-100,
+[data-theme="dark"] .border-gray-200,
+[data-theme="dark"] .border-gray-300 { border-color: var(--outline); }
+[data-theme="dark"] .placeholder\:text-gray-400::placeholder { color: var(--muted); }
+
+/* Gradient page backgrounds used by auth / reconnect / status screens */
+[data-theme="dark"] .from-green-50 {
+    --tw-gradient-from: #12241B var(--tw-gradient-from-pos);
+    --tw-gradient-to: rgb(18 36 27 / 0) var(--tw-gradient-to-pos);
+}
+[data-theme="dark"] .to-emerald-50 { --tw-gradient-to: #0B1220 var(--tw-gradient-to-pos); }
+[data-theme="dark"] .to-green-100\/50 { --tw-gradient-to: rgb(52 199 123 / 0.12) var(--tw-gradient-to-pos); }
+
+/* Accent chips that assumed a white canvas */
+[data-theme="dark"] .text-\[\#006b2c\] { color: var(--primary-dark); }
+[data-theme="dark"] .bg-green-50 { background-color: rgba(52, 199, 123, 0.15); }
+[data-theme="dark"] .text-green-800 { color: #7EE2A8; }
 
 /* Theme transition */
 html, html * {
@@ -150,7 +194,7 @@ html.no-transition, html.no-transition * {
 html {
     width: 100%;
     min-height: 100%;
-    background: #f7f9fb;
+    background: var(--background);
 }
 
 body {
@@ -158,7 +202,7 @@ body {
     min-width: 320px;
     min-height: 100%;
     font-family: "Manrope", sans-serif;
-    background: #f7f9fb;
+    background: var(--background);
     color: var(--text);
 }
 

@@ -1,14 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import WorkerBottomNav from '../../components/WorkerBottomNav.jsx';
-import { reportService, authService } from '../../services.js';
+import { reportService, authService, workerService } from '../../services.js';
 
 export default function WorkerHome() {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [alertCount, setAlertCount] = useState(0);
 
   useEffect(() => { fetchTasks(); }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const alerts = await workerService.getProximityAlerts();
+        if (!cancelled) setAlertCount(alerts.length);
+      } catch {}
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   const fetchTasks = async () => {
     try {
@@ -45,6 +59,18 @@ export default function WorkerHome() {
               </div>
               <h1 className="text-[18px] font-extrabold text-on-background">Worker Dashboard</h1>
             </div>
+            <button
+              onClick={() => navigate("/worker/map")}
+              aria-label="Proximity alerts"
+              className="relative w-9 h-9 rounded-full bg-white shadow-md border border-gray-100 flex items-center justify-center active:scale-95 transition-transform mr-2"
+            >
+              <span className="material-symbols-outlined text-gray-600 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>notifications</span>
+              {alertCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center">
+                  {alertCount > 9 ? "9+" : alertCount}
+                </span>
+              )}
+            </button>
             <button
               onClick={() => navigate("/profile")}
               className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md"

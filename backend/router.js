@@ -1,5 +1,7 @@
 ﻿import { ROLES, ADMIN_ROLES, REPORT_STATUSES, PRIORITY_WEIGHTS } from "./constants.js";
 import { getAIProvider, MockAIProvider } from "./ai/provider.js";
+import { verifyCleanupCompletion, detectBinType } from "./ai/geminiVerifier.js";
+import { getBinGuidance } from "./binMapping.js";
 import { store } from "./store.js";
 import { publish } from "./events.js";
 import {
@@ -18,6 +20,39 @@ import {
   validateStatusTransition,
 } from "./utils.js";
 import { welcomeEmail, reportReceivedEmail, teamAssignedEmail, reportResolvedEmail } from "./mailer.js";
+import { updateWorkerLocation, getAlerts as getProximityAlerts, dismissAlert as dismissProximityAlert, dismissAllAlerts as dismissAllProximityAlerts, dismissForReport } from "./proximity.js";
+
+// Fetch a stored image (local /uploads path or remote URL) and return it as a
+// data URL for Gemini. Returns null on any failure — verification proceeds
+// without the before photo instead of erroring out.
+async function toDataUrlIfLocal(url) {
+  try {
+    if (!url) return null;
+    let buffer;
+    let mimeType = "image/jpeg";
+    if (/^https?:\/\//i.test(url)) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      mimeType = res.headers.get("content-type") || mimeType;
+      buffer = Buffer.from(await res.arrayBuffer());
+    } else {
+      const { resolveUploadsRoot } = await import("./utils.js");
+      const { readFile } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      const rel = String(url).replace(/^\/uploads\//, "");
+      const abs = join(resolveUploadsRoot(), rel);
+      buffer = await readFile(abs);
+    }
+    if (buffer.length > 8 * 1024 * 1024) return null;
+    return `data:${mimeType};base64,${buffer.toString("base64")}`;
+  } catch (err) {
+    console.warn("[Gemini] could not load before image:", err.message);
+    return null;
+  }
+}
 
 async function reverseGeocode(lat, lng) {
   try {
@@ -358,6 +393,42 @@ export async function handleApiRequest(req, res) {
       });
     }
 
+    // ---- Worker-only Gemini endpoints ----
+    if (pathname === "/api/ai/verify-cleanup" && req.method === "POST") {
+      const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
+      if (!auth) return;
+      const body = await readJson(req);
+      if (!body.afterImage || !String(body.afterImage).startsWith("data:")) {
+        return json(res, 400, { error: { code: "NO_IMAGE", message: "An after-cleanup photo is required for verification." } });
+      }
+      if (body.afterImage.length > 10 * 1024 * 1024) {
+        return json(res, 400, { error: { code: "IMAGE_TOO_LARGE", message: "Photo is too large. Please capture a smaller one." } });
+      }
+      let beforeImage = null;
+      if (body.reportId) {
+        const report = await store.getReportById(String(body.reportId));
+        if (report && report.media && report.media.imageUrl) beforeImage = await toDataUrlIfLocal(report.media.imageUrl);
+      }
+      const verdict = await verifyCleanupCompletion({ beforeImage, afterImage: body.afterImage, wasteType: body.wasteType || "", comment: body.comment || "" });
+      const bin = getBinGuidance(body.wasteType || "");
+      return json(res, 200, { verification: verdict, disposal: { bin: bin.bin, binLabel: bin.binLabel, color: bin.color, handling: bin.handling } });
+    }
+
+    if (pathname === "/api/ai/bin-type" && req.method === "POST") {
+      const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
+      if (!auth) return;
+      const body = await readJson(req);
+      if (!body.image || !String(body.image).startsWith("data:")) {
+        return json(res, 400, { error: { code: "NO_IMAGE", message: "A photo is required to detect the dustbin type." } });
+      }
+      if (body.image.length > 10 * 1024 * 1024) {
+        return json(res, 400, { error: { code: "IMAGE_TOO_LARGE", message: "Photo is too large. Please capture a smaller one." } });
+      }
+      const detection = await detectBinType({ image: body.image });
+      const guidance = getBinGuidance(body.wasteType || "");
+      return json(res, 200, { detection, recommendedDisposal: { bin: guidance.bin, binLabel: guidance.binLabel, color: guidance.color, handling: guidance.handling } });
+    }
+
     if (pathname === "/api/reports" && req.method === "GET") {
       const auth = await requireAuth(req, res);
       if (!auth) return;
@@ -474,6 +545,7 @@ export async function handleApiRequest(req, res) {
       if (nextStatus === REPORT_STATUSES.RESOLVED) {
         const citizen = await store.getUserByUid(report.citizenId);
         if (citizen) reportResolvedEmail({ email: citizen.email, name: citizen.name, reportId });
+        dismissForReport(reportId); // auto-dismiss any proximity alert for this task
       }
       publish("waste:status:update", { id: reportId, status: nextStatus });
       return json(res, 200, { report: formatReportForClient(updated) });
@@ -983,6 +1055,52 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       const updated = await store.updateWorkerReport(reportId, { rejectionReason: reason });
       await store.createNotification({ userId: "user-admin", title: "Worker flagged issue", body: `Worker ${auth.user.name} flagged ${reportId}: ${reason}` });
       return json(res, 200, { report: formatReportForClient(updated) });
+    }
+
+    // ---- Worker proximity alerts ----
+    if (pathname === "/api/worker/location" && req.method === "POST") {
+      const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
+      if (!auth) return;
+      const body = await readJson(req);
+      const latitude = Number(body.latitude), longitude = Number(body.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return json(res, 400, { error: { code: "VALIDATION", message: "latitude and longitude are required." } });
+      }
+      const tasks = await store.getWorkerTasks(auth.user.uid); // open assigned tasks only
+      const { raised } = updateWorkerLocation(auth.user.uid, { latitude, longitude }, tasks.map((t) => ({
+        id: t.id,
+        latitude: t.location?.latitude,
+        longitude: t.location?.longitude,
+        wasteType: t.aiAnalysis?.wasteType,
+        address: t.location?.address,
+        severity: t.aiAnalysis?.severity,
+      })));
+      for (const alert of raised) {
+        publish("worker:proximity", { workerId: auth.user.uid, ...alert });
+      }
+      return json(res, 200, { ok: true, raised, activeAlerts: getProximityAlerts(auth.user.uid).length });
+    }
+
+    if (pathname === "/api/worker/proximity-alerts" && req.method === "GET") {
+      const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
+      if (!auth) return;
+      return json(res, 200, { alerts: getProximityAlerts(auth.user.uid) });
+    }
+
+    const proximityDismissMatch = pathname.match(/^\/api\/worker\/proximity-alerts\/([^/]+)\/dismiss$/);
+    if (proximityDismissMatch && req.method === "POST") {
+      const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
+      if (!auth) return;
+      const reportId = decodeURIComponent(proximityDismissMatch[1]);
+      const removed = dismissProximityAlert(auth.user.uid, reportId);
+      return json(res, 200, { ok: true, removed });
+    }
+
+    if (pathname === "/api/worker/proximity-alerts/dismiss-all" && req.method === "POST") {
+      const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
+      if (!auth) return;
+      const removed = dismissAllProximityAlerts(auth.user.uid);
+      return json(res, 200, { ok: true, removed });
     }
 
     return json(res, 404, { error: { code: "NOT_FOUND", message: "Endpoint not found." } });

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from "react";
 import { BrowserRouter, Route, Routes, Navigate, useParams } from "react-router-dom";
-import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ProtectedRoute, ReconnectingScreen } from "./components/ProtectedRoute";
 import { appService } from "./services.js";
 import { APP_STATES } from "./data.js";
 import logo from "./logo.svg";
@@ -65,32 +65,52 @@ const ADMIN_ROLES = ["admin", "super_admin", "ward_officer", "sanitation_supervi
 export default function App() {
   const [ready, setReady] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [slowBoot, setSlowBoot] = useState(false);
 
   useEffect(() => {
+    const hintTimer = setTimeout(() => setSlowBoot(true), 10000);
     appService.initialize().then((snap) => {
+      clearTimeout(hintTimer);
       setReady(true);
       if (snap.appState === APP_STATES.RECONNECTING) {
         setReconnecting(true);
         appService.startAutoRetry(10);
       }
-    }).catch(() => setReady(true));
+    }).catch((err) => {
+      clearTimeout(hintTimer);
+      console.error("[boot] initialize crashed:", err);
+      setReady(true);
+    });
+    return () => clearTimeout(hintTimer);
   }, []);
 
   if (!ready) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-primary-container flex items-center justify-center animate-pulse overflow-hidden">
-            <img src={logo} alt="SwachhLens" className="w-12 h-12 object-contain" />
-          </div>
+            <div className="w-16 h-16 rounded-2xl bg-primary-container flex items-center justify-center animate-pulse overflow-hidden">
+              <img src={logo} alt="SwachhLens" className="w-12 h-12 object-contain" />
+            </div>
           <div className="flex gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
             <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
             <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
           </div>
           <p className="text-sm text-gray-400 font-medium" style={{ fontFamily: "Manrope" }}>Connecting to server...</p>
+          {slowBoot && (
+            <p className="text-xs text-gray-400 text-center max-w-[240px]" style={{ fontFamily: "Manrope" }}>
+              Taking longer than usual — the server may be waking up. Retrying automatically…
+            </p>
+          )}
         </div>
       </div>
+    );
+  }
+  if (reconnecting) {
+    return (
+      <BrowserRouter>
+        <ReconnectingScreen />
+      </BrowserRouter>
     );
   }
   return (

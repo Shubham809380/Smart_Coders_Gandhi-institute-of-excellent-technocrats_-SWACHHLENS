@@ -171,6 +171,92 @@ export default function Analytics() {
             </div>
           </section>
         </div>
+
+        {/* Role-wise breakdown — citizen / team / city-wide */}
+        <h3 className="text-xs font-extrabold uppercase tracking-widest adm-muted pt-2">Role-wise performance</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {/* Citizen-side */}
+          <section className="adm-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(0,168,150,0.12)", color: "var(--adm-primary)" }}><Icon name="users" size={14} /></span>
+              <h4 className="text-sm font-extrabold">Citizen engagement</h4>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="rounded-lg p-2.5" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none">{data.citizens?.totalReporters ?? 0}<span className="text-[11px] font-bold adm-muted">/{data.citizens?.totalCitizens ?? 0}</span></p>
+                <p className="text-[10px] font-bold uppercase tracking-widest adm-muted mt-1">Active reporters</p>
+              </div>
+              <div className="rounded-lg p-2.5" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none">{data.citizens?.totalCitizens ? ((data.total || 0) / data.citizens.totalCitizens).toFixed(1) : "—"}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest adm-muted mt-1">Avg reports/citizen</p>
+              </div>
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-widest adm-muted mb-1.5">Top contributors</p>
+            {(data.citizens?.topContributors || []).length === 0 ? (
+              <p className="text-xs adm-muted">No citizen reports yet.</p>
+            ) : (
+              <ol className="space-y-1.5">
+                {data.citizens.topContributors.map((c, i) => (
+                  <li key={c.uid} className="flex items-center gap-2 text-xs">
+                    <span className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-extrabold shrink-0" style={{ background: "var(--adm-surface-2)", color: i === 0 ? "var(--adm-primary)" : "var(--adm-muted)" }}>{i + 1}</span>
+                    <span className="font-semibold truncate flex-1">{c.name}</span>
+                    <span className="tabular-nums adm-muted shrink-0">{c.reports} reports · {c.resolved} fixed</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          {/* Team-side */}
+          <section className="adm-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(59,130,246,0.12)", color: "#3B82F6" }}><Icon name="truck" size={14} /></span>
+              <h4 className="text-sm font-extrabold">Team performance</h4>
+            </div>
+            {(data.teamPerformance || []).length === 0 ? (
+              <p className="text-xs adm-muted">No teams created yet.</p>
+            ) : (
+              <div className="space-y-2.5">
+                {data.teamPerformance.map((t) => (
+                  <div key={t.name}>
+                    <div className="flex justify-between text-[11px] font-semibold mb-1">
+                      <span className="truncate">{t.name}</span>
+                      <span className="tabular-nums adm-muted shrink-0 ml-2">{t.resolved}/{t.assigned} · {fmtMins(t.avgResolutionMins)}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--adm-surface-2)" }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${t.resolutionRatePct}%`, background: t.resolutionRatePct >= 60 ? "var(--adm-ok)" : t.resolutionRatePct >= 30 ? "var(--adm-warn)" : "var(--adm-danger)" }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* City-wide */}
+          <section className="adm-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(139,92,246,0.12)", color: "#8B5CF6" }}><Icon name="layers" size={14} /></span>
+              <h4 className="text-sm font-extrabold">City-wide health</h4>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-lg p-2.5 text-center" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none">{data.sla?.resolvedWithin24hPct != null ? `${data.sla.resolvedWithin24hPct}%` : "—"}</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest adm-muted mt-1">SLA &lt;24h</p>
+              </div>
+              <div className="rounded-lg p-2.5 text-center" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none" style={{ color: data.sla?.openBreached48h > 0 ? "var(--adm-danger)" : undefined }}>{data.sla?.openBreached48h ?? 0}</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest adm-muted mt-1">Breached 48h</p>
+              </div>
+              <div className="rounded-lg p-2.5 text-center" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none">{data.duplicateRatePct ?? 0}%</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest adm-muted mt-1">Duplicate rate</p>
+              </div>
+            </div>
+            <p className="text-[11px] adm-muted mt-3 leading-relaxed">
+              SLA = share of reports resolved within 24h (last 30 days). Breached = open reports older than 48h needing attention.
+            </p>
+          </section>
+        </div>
       </div>
     </AdminLayout>
   );

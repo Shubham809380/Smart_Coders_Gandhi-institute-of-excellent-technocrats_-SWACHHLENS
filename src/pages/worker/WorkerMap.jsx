@@ -5,9 +5,8 @@ import "leaflet/dist/leaflet.css";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import { workerService } from "../../services.js";
 import { useTheme } from "../../contexts/ThemeContext.jsx";
-
-const SEV_COLORS = { critical:"#E5484D", high:"#F5A623", medium:"#F5A623", low:"#34C77B" };
-const SEV_BG = { critical:"#E5484D20", high:"#F5A62320", medium:"#F5A62320", low:"#34C77B20" };
+const SEV_COLORS = { critical:"#E5484D", high:"#F97316", medium:"#F59E0B", low:"#34C77B" };
+const SEV_BG = { critical:"#E5484D20", high:"#F9731620", medium:"#F59E0B20", low:"#34C77B20" };
 
 function makeIcon(color) {
   return L.divIcon({
@@ -43,11 +42,14 @@ export default function WorkerMap() {
   const [loading, setLoading] = useState(true);
   const [workerLoc, setWorkerLoc] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [proximityAlerts, setProximityAlerts] = useState([]);
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markersRef = useRef([]);
   const workerMarkerRef = useRef(null);
   const watchIdRef = useRef(null);
+  const lastPingRef = useRef(0);
+  const refreshAlertsRef = useRef(() => {});
 
   const T = isDark
     ? { bg:'#0B1220', surface:'#161B26', border:'#232A3A', text:'#E8ECF1', muted:'#8791A3', accent:'#4C8DFF', tileUrl:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' }
@@ -67,6 +69,7 @@ export default function WorkerMap() {
     });
     L.tileLayer(T.tileUrl, { maxZoom:19 }).addTo(map);
     L.control.zoom({ position:'bottomright' }).addTo(map);
+    map.on("click", () => setSelectedTask(null));
     mapInstance.current = map;
     return map;
   }, [isDark]);
@@ -105,6 +108,14 @@ export default function WorkerMap() {
           workerMarkerRef.current.setLatLng([loc.lat, loc.lng]);
         } else if (mapInstance.current) {
           workerMarkerRef.current = L.marker([loc.lat, loc.lng], { icon:makeWorkerIcon(), zIndexOffset:1000 }).addTo(mapInstance.current);
+        }
+        // Ping the server at most every 15s so proximity alerts stay fresh.
+        const now = Date.now();
+        if (now - lastPingRef.current > 15000) {
+          lastPingRef.current = now;
+          workerService.pingLocation(loc.lat, loc.lng)
+            .then(() => refreshAlertsRef.current())
+            .catch(() => {});
         }
       },
       () => {},
@@ -159,6 +170,25 @@ export default function WorkerMap() {
     return () => { delete window.__workerMapNav; };
   }, [tasks, navigate]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refreshAlerts = async () => {
+      try {
+        const alerts = await workerService.getProximityAlerts();
+        if (!cancelled) setProximityAlerts(alerts);
+      } catch {}
+    };
+    refreshAlertsRef.current = refreshAlerts;
+    refreshAlerts();
+    const id = setInterval(refreshAlerts, 20000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  const dismissAlert = async (reportId) => {
+    setProximityAlerts((prev) => prev.filter((a) => a.reportId !== reportId));
+    try { await workerService.dismissProximityAlert(reportId); } catch {}
+  };
+
   const navigateToTask = (t) => {
     if (t.latitude && t.longitude) {
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${t.latitude},${t.longitude}`, '_blank');
@@ -182,6 +212,28 @@ export default function WorkerMap() {
       </div>
 
       <div className="flex-1 mx-4 mt-4 rounded-2xl overflow-hidden relative" ref={mapRef} style={{ minHeight:'55vh', border:`1px solid ${T.border}` }}>
+        {proximityAlerts.length > 0 && (
+          <div className="absolute top-3 left-3 right-3 z-[600] flex flex-col gap-2">
+            {proximityAlerts.slice(0, 3).map((a) => (
+              <div key={a.reportId} className="rounded-xl px-3 py-2.5 flex items-center gap-2.5" style={{ background:T.surface, border:`1px solid ${T.border}`, boxShadow:'0 6px 18px rgba(0,0,0,0.18)' }}>
+                <span className="material-symbols-outlined text-[20px] shrink-0" style={{ color:'#F5A623' }}>near_me</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-extrabold truncate" style={{ color:T.text }}>
+                    {(a.wasteType || 'waste').replace(/_/g,' ')} · {a.distanceMeters < 1000 ? `${a.distanceMeters}m` : `${(a.distanceMeters/1000).toFixed(1)}km`} away
+                  </p>
+                  <p className="text-[10px] font-semibold truncate" style={{ color:T.muted }}>{a.address || a.reportId}</p>
+                </div>
+                <button onClick={() => { const t = tasks.find(x => x.id === a.reportId); if (t) navigateToTask(t); }}
+                  className="px-2.5 py-1.5 rounded-lg text-white text-[10px] font-bold shrink-0 active:scale-95 transition-transform" style={{ background:T.accent }}>
+                  Go
+                </button>
+                <button onClick={() => dismissAlert(a.reportId)} aria-label="Dismiss alert" className="p-1 shrink-0 active:scale-90 transition-transform">
+                  <span className="material-symbols-outlined text-[16px]" style={{ color:T.muted }}>close</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {!workerLoc && !loading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-30" style={{ background:T.bg }}>
             <span className="material-symbols-outlined text-[40px] mb-2" style={{ color:T.muted }}>location_off</span>
@@ -232,6 +284,9 @@ export default function WorkerMap() {
                 <span className="text-[11px] font-bold" style={{ color:T.muted }}>{selectedTask.priorityScore||0} pts</span>
               </div>
             </div>
+            <button onClick={() => setSelectedTask(null)} aria-label="Dismiss" className="p-1 -m-1 shrink-0 active:scale-90 transition-transform">
+              <span className="material-symbols-outlined text-[18px]" style={{ color:T.muted }}>close</span>
+            </button>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={() => navigateToTask(selectedTask)}

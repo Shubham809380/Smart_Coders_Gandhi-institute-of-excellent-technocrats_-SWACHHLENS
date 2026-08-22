@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
-import { workerService } from "../../services.js";
+import { workerService, aiService } from "../../services.js";
 
 const volOptions = ["small", "medium", "large", "very_large"];
 const volLabels = { small: "Small", medium: "Medium", large: "Large", very_large: "Very Large" };
@@ -17,6 +17,8 @@ export default function CompleteCleanup() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [verification, setVerification] = useState(null);
+  const [disposal, setDisposal] = useState(null);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -46,6 +48,19 @@ export default function CompleteCleanup() {
         reader.onerror = rej;
         reader.readAsDataURL(photoFile);
       });
+      // Gemini verification is advisory — never blocks the submission.
+      try {
+        const v = await aiService.verifyCleanup({
+          reportId: report.id,
+          afterImage: dataUrl,
+          wasteType: report.wasteType || "",
+          comment: notes,
+        });
+        setVerification(v.verification || null);
+        setDisposal(v.disposal || null);
+      } catch (verifyErr) {
+        console.warn("[cleanup] AI verification skipped:", verifyErr?.message);
+      }
       await workerService.updateReportStatus(report.id, "verification", { afterImage: dataUrl });
       await workerService.saveReportNotes(report.id, { workerNotes: notes, actualVolume: volume });
       setSubmitted(true);
@@ -54,14 +69,40 @@ export default function CompleteCleanup() {
   };
 
   if (submitted) {
+    const v = verification;
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
         <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mb-6 animate-bounce">
           <span className="material-symbols-outlined text-emerald-600 text-[40px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
         </div>
         <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Cleanup Submitted!</h2>
-        <p className="text-sm text-gray-500 text-center mb-8">Pending admin verification. You'll be notified once reviewed.</p>
-        <button onClick={() => navigate("/worker/home")} className="w-full h-14 rounded-2xl bg-green-600 text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-all" style={{ boxShadow: "0 6px 20px -4px rgba(0,107,44,0.4)" }}>
+        <p className="text-sm text-gray-500 text-center mb-6">Pending admin verification. You'll be notified once reviewed.</p>
+
+        {v && (
+          <div className={`w-full max-w-sm rounded-2xl border p-4 mb-4 ${v.verified === true ? "bg-emerald-50 border-emerald-200" : v.verified === false ? "bg-amber-50 border-amber-200" : "bg-gray-100 border-gray-200"}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="material-symbols-outlined text-[20px]" style={{ color: v.verified === true ? "#059669" : v.verified === false ? "#D97706" : "#6B7280" }}>
+                {v.verified === true ? "verified" : v.verified === false ? "error" : "help"}
+              </span>
+              <p className="text-sm font-extrabold text-gray-900">
+                {v.verified === true ? `AI Verified (${v.confidence}%)` : v.verified === false ? `Needs attention (${v.confidence}%)` : "AI verification unavailable"}
+              </p>
+            </div>
+            {v.reason && <p className="text-xs text-gray-600 leading-relaxed">{v.reason}</p>}
+          </div>
+        )}
+
+        {disposal && disposal.bin !== "none" && (
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-4 mb-8">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-3 h-3 rounded-full shrink-0" style={{ background: disposal.color }} />
+              <p className="text-sm font-extrabold text-gray-900">{disposal.binLabel}</p>
+            </div>
+            <p className="text-xs text-gray-500 leading-relaxed">{disposal.handling}</p>
+          </div>
+        )}
+
+        <button onClick={() => navigate("/worker/home")} className="w-full max-w-sm h-14 rounded-2xl bg-green-600 text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-all" style={{ boxShadow: "0 6px 20px -4px rgba(0,107,44,0.4)" }}>
           <span className="material-symbols-outlined text-[20px]">home</span>
           Back to Tasks
         </button>

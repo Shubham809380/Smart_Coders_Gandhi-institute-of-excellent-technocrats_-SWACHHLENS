@@ -11,6 +11,10 @@ function getStoredMode() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (VALID_MODES.includes(stored)) return stored;
   } catch {}
+  // First visit: follow the OS preference instead of forcing dark.
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+  } catch {}
   return DEFAULT_MODE;
 }
 
