@@ -5,7 +5,7 @@ import path from "path";
 import crypto from "crypto";
 import pg from "pg";
 
-const BASE = "http://127.0.0.1:3001";
+const BASE = "http://127.0.0.1:3000";
 const dbUrl = fs.readFileSync(path.join(os.tmpdir(), "dburl.txt"), "utf8").trim();
 const pool = new pg.Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false }, max: 3 });
 
