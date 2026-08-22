@@ -81,6 +81,18 @@ const io = new Server(httpServer, {
 
 // --- Health check (must stay dependency-free and return 200 fast) ----------
 let healthy = true;
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    service: "socket-server",
+    app: "SwachhLens",
+    status: healthy ? "ok" : "degraded",
+    connectedClients: io.engine.clientsCount ?? 0,
+    endpoints: { health: "/health", socket: "/socket.io/" },
+    note: "This is the realtime (Socket.IO) service. Browsers connect via WebSocket — nothing to display here.",
+  });
+});
+
 app.get("/health", (req, res) => {
   res.status(healthy ? 200 : 503).json({
     status: healthy ? "ok" : "degraded",
