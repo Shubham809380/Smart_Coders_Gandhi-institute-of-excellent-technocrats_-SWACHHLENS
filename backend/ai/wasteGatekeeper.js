@@ -11,8 +11,10 @@ const verdictCache = new Map();
 
 function authParams() {
   const key = appConfig.geminiApiKey;
+  // New-format AI Studio keys ("AQ....") use the x-goog-api-key header.
+  if (key.startsWith("AQ.")) return { keyParam: "", headers: { "x-goog-api-key": key } };
   // Standard API keys start with "AIza" and go in the query string;
-  // OAuth-style tokens must be sent as a Bearer header (same rule as geminiVerifier).
+  // OAuth-style tokens must be sent as a Bearer header.
   if (key.startsWith("AIza")) return { keyParam: `?key=${encodeURIComponent(key)}`, headers: {} };
   return { keyParam: "", headers: { Authorization: `Bearer ${key}` } };
 }

@@ -8,6 +8,8 @@ function isConfigured() {
 
 function authParams() {
   const key = appConfig.geminiApiKey;
+  // New-format AI Studio keys ("AQ....") use the x-goog-api-key header.
+  if (key.startsWith("AQ.")) return { keyParam: "", headers: { "x-goog-api-key": key } };
   // Standard API keys start with "AIza" and go in the query string.
   // OAuth-style tokens (e.g. "AQ....") must be sent as a Bearer header.
   if (key.startsWith("AIza")) return { keyParam: `?key=${encodeURIComponent(key)}`, headers: {} };
