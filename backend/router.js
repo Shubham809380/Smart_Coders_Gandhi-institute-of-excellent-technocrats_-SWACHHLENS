@@ -19,7 +19,7 @@ import {
   saveDataUrlMedia,
   validateStatusTransition,
 } from "./utils.js";
-import { welcomeEmail, reportReceivedEmail, teamAssignedEmail, reportResolvedEmail } from "./mailer.js";
+import { welcomeEmail, signInAlertEmail, reportReceivedEmail, teamAssignedEmail, reportResolvedEmail } from "./mailer.js";
 import { updateWorkerLocation, getAlerts as getProximityAlerts, dismissAlert as dismissProximityAlert, dismissAllAlerts as dismissAllProximityAlerts, dismissForReport } from "./proximity.js";
 
 // Fetch a stored image (local /uploads path or remote URL) and return it as a
@@ -205,6 +205,7 @@ export async function handleApiRequest(req, res) {
       }
       const token = createSessionToken();
       await store.createSession(token, user.uid);
+      signInAlertEmail({ email: user.email, name: user.name, method: "email & password" });
       return json(res, 200, { sessionToken: token, currentUser: sanitizeUser(user), role: user.role, isAuthenticated: true, loading: false, error: "" });
     }
 
@@ -278,7 +279,9 @@ export async function handleApiRequest(req, res) {
       }
 
       let user = await store.getUserByEmail(email);
+      let isNewUser = false;
       if (!user) {
+        isNewUser = true;
         const uid = createId("user");
         const { passwordHash, salt } = await createPasswordHash("google-oauth-" + uid);
         user = await store.createUser({ uid, name, email, phone: "", passwordHash, salt, role: requestedRole, photoUrl: avatar });
@@ -294,6 +297,8 @@ export async function handleApiRequest(req, res) {
 
       const token = createSessionToken();
       await store.createSession(token, user.uid);
+      if (isNewUser) welcomeEmail(user);
+      else signInAlertEmail({ email: user.email, name: user.name, method: "Google sign-in" });
       return json(res, 200, { sessionToken: token, currentUser: sanitizeUser(user), role: user.role, isAuthenticated: true, loading: false, error: "" });
     }
 

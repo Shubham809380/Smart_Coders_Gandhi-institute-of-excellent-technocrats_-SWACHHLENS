@@ -111,17 +111,42 @@ export function sendEmail({ to, subject, title = "", html = "" }) {
   return send;
 }
 
+function istNow() {
+  return `${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date())} IST`;
+}
+
 export function welcomeEmail(user) {
   return sendEmail({
     to: user.email,
-    subject: "Welcome to SwachhLens!",
-    title: `Welcome, ${user.name || "there"}!`,
-    html: `<p style="margin:0 0 10px;line-height:1.6;">Your SwachhLens account is ready. Snap a photo of waste around you and our AI will analyze it, route it to the right municipal team, and track cleanup till resolution.</p>
-      <ul style="margin:0 0 10px;padding-left:18px;line-height:1.7;color:#526072;">
-        <li>Report waste with a photo or video</li>
-        <li>Track your report status live</li>
-        <li>Get notified when a team is assigned</li>
-      </ul>`,
+    subject: `Welcome to SwachhLens, ${user.name || "there"}!`,
+    title: `Welcome aboard, ${user.name || "friend"}!`,
+    html: `
+      <p style="margin:0 0 14px;line-height:1.7;">Thank you for joining <strong>SwachhLens</strong> — an AI-powered platform that helps citizens report unmanaged waste and ensures municipal teams resolve it faster and more transparently.</p>
+      <p style="margin:0 0 8px;line-height:1.7;font-weight:600;color:#0B1220;">Here is what you can do from today:</p>
+      <ul style="margin:0 0 16px;padding-left:20px;line-height:1.9;color:#526072;">
+        <li><strong>Report waste</strong> — capture a photo; our AI classifies it and assesses priority instantly.</li>
+        <li><strong>Track progress live</strong> — follow every status change until the cleanup is verified.</li>
+        <li><strong>Stay informed</strong> — receive updates when a team is assigned and the work is completed.</li>
+      </ul>
+      <p style="margin:0;line-height:1.7;">Every report you make contributes to a cleaner, healthier city. We are glad to have you with us.</p>
+      <p style="margin:18px 0 0;line-height:1.7;">Warm regards,<br/><strong>Team SwachhLens</strong></p>`,
+  });
+}
+
+export function signInAlertEmail({ email, name, method = "email & password" }) {
+  return sendEmail({
+    to: email,
+    subject: "New sign-in to your SwachhLens account",
+    title: "New sign-in detected",
+    html: `
+      <p style="margin:0 0 14px;line-height:1.7;">Hi ${name || "there"}, your SwachhLens account was recently accessed successfully. Here are the details for your records:</p>
+      <table style="width:100%;font-size:13px;line-height:1.9;color:#526072;background:#f8fafc;border-radius:10px;padding:4px 14px;">
+        <tr><td style="width:38%;"><strong>Date &amp; Time</strong></td><td>${istNow()}</td></tr>
+        <tr><td><strong>Account</strong></td><td>${email}</td></tr>
+        <tr><td><strong>Sign-in method</strong></td><td>${method}</td></tr>
+      </table>
+      <p style="margin:14px 0 0;line-height:1.7;">If this was you, no action is needed. If you do not recognise this activity, we recommend resetting your password immediately to secure your account.</p>
+      <p style="margin:18px 0 0;line-height:1.7;">Stay safe,<br/><strong>Team SwachhLens</strong></p>`,
   });
 }
 
