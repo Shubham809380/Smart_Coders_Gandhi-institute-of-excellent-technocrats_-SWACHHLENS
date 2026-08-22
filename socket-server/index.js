@@ -50,8 +50,28 @@ const app = express();
 const httpServer = createServer(app);
 
 app.disable("x-powered-by");
+
+// Express-side CORS (mirrors corsOptions). Rejects disallowed browser origins.
+app.use((req, res, next) => {
+  const origin = req.get("origin") || "";
+  if (origin) {
+    if (!isAllowedOrigin(origin)) {
+      console.warn("[socket-server] CORS blocked origin:", origin);
+      return res.status(403).json({ error: { code: "FORBIDDEN_ORIGIN", message: "Origin not allowed." } });
+    }
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    return res.status(204).end();
+  }
+  next();
+});
+
 app.use(express.json({ limit: "16kb" }));
-app.use(corsOptions);
 
 const io = new Server(httpServer, {
   cors: corsOptions,
