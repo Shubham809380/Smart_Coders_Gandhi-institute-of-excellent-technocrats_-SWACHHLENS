@@ -152,7 +152,9 @@ async function main() {
     console.error("[socket-server] database unreachable at boot:", err?.code || err?.message);
   }
 
-  const PORT = Number(process.env.PORT || 3000);
+  const args = process.argv.slice(2);
+  const portFlag = args.findIndex((arg) => arg === "--port");
+  const PORT = Number(process.env.PORT || (portFlag >= 0 ? args[portFlag + 1] : 3000));
   const HOST = "0.0.0.0";
   httpServer.listen(PORT, HOST, () => {
     console.log(`Socket.IO server running on http://${HOST}:${PORT}`);

@@ -6,7 +6,8 @@ import {
 } from "./data.js";
 import { uploadToCloudinary } from "./cloudinary.js";
 
-const API_BASE = "/api";
+const API_ORIGIN = String(import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+const API_BASE = `${API_ORIGIN}/api`;
 const STORAGE_KEY = "swachhlens-client-state-v4";
 const TOKEN_KEY = "swachhlens-session-token";
 const SESSION_EXPIRED_KEY = "swachhlens-session-expired";
