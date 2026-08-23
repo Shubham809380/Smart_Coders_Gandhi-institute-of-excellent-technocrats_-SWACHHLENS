@@ -677,6 +677,22 @@ export async function handleApiRequest(req, res) {
         priorityLevel: baseReport.priority.level, latitude: baseReport.location.latitude, longitude: baseReport.location.longitude,
         createdAt: created.createdAt,
       }, { roles: [...ADMIN_ROLES] });
+      // On-duty cleanup crews hear about fresh reports immediately so field
+      // workers see live pickups without waiting for a dispatch assignment.
+      try {
+        const onDutyUids = await store.getOnDutyWorkerUids();
+        const workerNotice = {
+          title: "New waste reported",
+          body: `${reportId} · ${aiAnalysis.severity || "medium"} severity · ${baseReport.location.locality}`,
+          kind: "info", reportId,
+        };
+        for (const uid of onDutyUids) {
+          await store.createNotification({ userId: uid, ...workerNotice });
+          publish("notification:new", { uid, ...workerNotice, at: nowIso() }, { uids: [uid] });
+        }
+      } catch (workerNotifyErr) {
+        console.error("[reports] worker notification fanout failed:", workerNotifyErr?.message || workerNotifyErr);
+      }
       reportReceivedEmail({ email: auth.user.email, name: auth.user.name, reportId, address: resolvedAddress, priority: baseReport.priority.level || "medium" });
       return json(res, 201, { report: formatReportForClient(created) });
     }

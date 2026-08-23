@@ -35,6 +35,8 @@ export default function WorkerTasks() {
   const [alertCount, setAlertCount] = useState(0);
   const [stats, setStats] = useState(null);
   const [dutyBusy, setDutyBusy] = useState(false);
+  const [liveNotice, setLiveNotice] = useState(null);
+  const noticeTimer = useRef(null);
   const touchStartY = useRef(0);
   const containerRef = useRef(null);
 
@@ -59,12 +61,19 @@ export default function WorkerTasks() {
   // Realtime: task pushes, status changes and citizen ratings arrive via the
   // socket; the poll is a resilience net that only runs while disconnected.
   useLive(
-    useCallback((evt) => {
+    useCallback((evt, payload) => {
+      if (evt === "notification:new" && payload?.title) {
+        setLiveNotice({ title: payload.title, body: payload.body, reportId: payload.reportId });
+        clearTimeout(noticeTimer.current);
+        noticeTimer.current = setTimeout(() => setLiveNotice(null), 6000);
+      }
       if (["task:assigned", "waste:status:update", "notification:new", "feedback:submitted"].includes(evt)) fetchData();
     }, [fetchData]),
     ["task:assigned", "waste:status:update", "notification:new", "feedback:submitted"],
     { pollMs: 45000, poll: fetchData },
   );
+
+  useEffect(() => () => clearTimeout(noticeTimer.current), []);
 
   const toggleDuty = async () => {
     if (dutyBusy) return;
@@ -196,6 +205,21 @@ export default function WorkerTasks() {
             <span className="material-symbols-outlined text-[16px]">power_settings_new</span>
             Go On Duty
           </span>
+        </button>
+      )}
+
+      {liveNotice && (
+        <button
+          onClick={() => { clearTimeout(noticeTimer.current); setLiveNotice(null); }}
+          className="mx-4 mt-4 rounded-2xl p-4 flex items-start gap-3 text-left w-[calc(100%-2rem)] text-white"
+          style={{ background: "linear-gradient(135deg, #006b2c, #00a843)", boxShadow: "0 6px 20px -4px rgba(0,107,44,0.4)", animation: "toastIn 0.25s ease" }}
+        >
+          <span className="material-symbols-outlined text-[22px] shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>campaign</span>
+          <span className="flex-1 min-w-0">
+            <span className="text-sm font-extrabold block">{liveNotice.title}</span>
+            {liveNotice.body && <span className="text-xs font-medium opacity-90 block mt-0.5 leading-relaxed">{liveNotice.body}</span>}
+          </span>
+          <span className="material-symbols-outlined text-[18px] shrink-0 opacity-80">close</span>
         </button>
       )}
 

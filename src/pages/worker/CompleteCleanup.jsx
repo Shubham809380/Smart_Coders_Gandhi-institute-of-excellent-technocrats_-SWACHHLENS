@@ -5,6 +5,35 @@ import { workerService, aiService } from "../../services.js";
 const volOptions = ["small", "medium", "large", "very_large"];
 const volLabels = { small: "Small", medium: "Medium", large: "Large", very_large: "Very Large" };
 
+// Camera photos are 3-8MB raw — far past Vercel's request limits and slow to
+// upload on mobile data. Downscale+re-encode before anything leaves the device.
+function fileToCompressedDataUrl(file, maxDim = 1280, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the captured photo."));
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not process the captured photo."));
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          const ratio = Math.min(maxDim / w, maxDim / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function CompleteCleanup() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,12 +72,7 @@ export default function CompleteCleanup() {
     if (!report || !photoFile) return;
     setSubmitting(true);
     try {
-      const reader = new FileReader();
-      const dataUrl = await new Promise((res, rej) => {
-        reader.onload = () => res(reader.result);
-        reader.onerror = rej;
-        reader.readAsDataURL(photoFile);
-      });
+      const dataUrl = await fileToCompressedDataUrl(photoFile);
       // Gemini verification is advisory — never blocks the submission.
       try {
         const v = await aiService.verifyCleanup({

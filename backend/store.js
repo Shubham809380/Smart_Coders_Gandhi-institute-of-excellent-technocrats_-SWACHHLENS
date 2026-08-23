@@ -966,6 +966,15 @@ export const store = {
     return this.getUserByUid(uid);
   },
 
+  // UIDs of every active cleanup worker currently on duty — the audience for
+  // live "new waste reported" notifications when citizens submit reports.
+  async getOnDutyWorkerUids() {
+    const res = await query(
+      "SELECT uid FROM users WHERE role = 'cleanup_worker' AND is_active <> false AND duty_status = 'on_duty'"
+    );
+    return res.rows.map((row) => row.uid);
+  },
+
   // Every cleanup worker needs crew membership to receive assignments.
   // New workers (email signup or Google) automatically join the default
   // ward team so admin-assigned work reaches them in real time.

@@ -500,7 +500,13 @@ export const reportService = {
     async updateReportStatus(id, status, extra = {}) {
         const body = { status };
         if (extra.afterImage) body.afterImage = extra.afterImage;
-        const data = await api(`/reports/${id}/status`, { method: "PATCH", body: JSON.stringify(body) });
+        // Photo payloads upload slowly on mobile data — use a slower lane than
+        // the default 30s so large after-images don't get aborted client-side.
+        const data = await api(`/reports/${id}/status`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+            timeoutMs: extra.timeoutMs || (body.afterImage ? 60000 : undefined),
+        });
         return data.report;
     },
     async saveAfterPhoto(id, afterImage) {
@@ -542,6 +548,7 @@ export const aiService = {
         const data = await api("/ai/verify-cleanup", {
             method: "POST",
             body: JSON.stringify({ reportId, afterImage, wasteType, comment }),
+            timeoutMs: 45000,
         });
         return data;
     },
