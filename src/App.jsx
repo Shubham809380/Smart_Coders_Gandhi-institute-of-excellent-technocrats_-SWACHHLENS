@@ -121,7 +121,7 @@ export default function App() {
             <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
             <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
           </div>
-          <p className="text-sm text-gray-400 font-medium" style={{ fontFamily: "Manrope" }}>Connecting to server...</p>
+          <p className="text-sm text-gray-400 font-medium" style={{ fontFamily: "Manrope" }}>AI-Powered Waste Reporting</p>
           {slowBoot && (
             <p className="text-xs text-gray-400 text-center max-w-[240px]" style={{ fontFamily: "Manrope" }}>
               Taking longer than usual — the server may be waking up. Retrying automatically…
