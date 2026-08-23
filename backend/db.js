@@ -219,6 +219,23 @@ export async function initDatabase() {
     await db.query("CREATE INDEX IF NOT EXISTS idx_reports_citizen ON reports(citizen_id)");
     await db.query("CREATE INDEX IF NOT EXISTS idx_reports_team ON reports(assigned_team_id)");
     await db.query("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)");
+    // Notification read-state so clients can show an unread badge accurately.
+    await db.query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT false");
+    // Every /api/ai/analyze outcome (accepted, gate-rejected, classifier-rejected,
+    // low-confidence) lands here so admins can audit AI health & rejection rates.
+    await db.query(`CREATE TABLE IF NOT EXISTS inference_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT DEFAULT '',
+      outcome TEXT NOT NULL DEFAULT 'accepted',
+      provider TEXT DEFAULT '',
+      waste_type TEXT DEFAULT '',
+      confidence DOUBLE PRECISION DEFAULT 0,
+      reason TEXT DEFAULT '',
+      processing_ms INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db.query("CREATE INDEX IF NOT EXISTS idx_inference_logs_created ON inference_logs(created_at)");
+    await db.query("CREATE INDEX IF NOT EXISTS idx_inference_logs_outcome ON inference_logs(outcome)");
     // Web Push subscriptions (DDL was previously applied manually; make it declarative).
     await db.query(`CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,

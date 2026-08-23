@@ -221,7 +221,14 @@ export async function handleApiRequest(req, res) {
     if (pathname === "/api/auth/me" && req.method === "GET") {
       const auth = await requireAuth(req, res);
       if (!auth) return;
-      return json(res, 200, { currentUser: sanitizeUser(auth.user), role: auth.user.role, isAuthenticated: true, loading: false, error: "" });
+      // Server-computed civic stats (single source of truth for all clients).
+      let stats = null;
+      try {
+        if (auth.user.role === ROLES.CITIZEN) stats = await store.getCitizenStats(auth.user.uid);
+      } catch (statsErr) {
+        console.warn("[auth/me] stats failed:", statsErr?.message);
+      }
+      return json(res, 200, { currentUser: sanitizeUser(auth.user), role: auth.user.role, isAuthenticated: true, loading: false, error: "", stats });
     }
 
     if (pathname === "/api/auth/signup" && req.method === "POST") {
@@ -264,6 +271,8 @@ export async function handleApiRequest(req, res) {
       }
       const token = createSessionToken();
       await store.createSession(token, user.uid);
+      // Login audit trail (powers the admin dashboard "logins today" counter).
+      store.logActivity({ actor: user.uid, role: user.role, action: "login" }).catch(() => {});
       signInAlertEmail({ email: user.email, name: user.name, method: "email & password" });
       return json(res, 200, { sessionToken: token, currentUser: sanitizeUser(user), role: user.role, isAuthenticated: true, loading: false, error: "" });
     }
@@ -478,6 +487,7 @@ export async function handleApiRequest(req, res) {
         const gate = await checkWasteImage({ image: body.image });
         if (gate.checked && !gate.isWaste) {
           console.log(`[AI] Gate rejected non-waste image (${gate.confidence}): ${gate.reason}`);
+          store.logInference({ userId: auth.user.uid, outcome: "gate_rejected", provider: "gemini_gatekeeper", reason: gate.reason || "" }).catch(() => {});
           return json(res, 200, {
             valid_waste_image: false,
             reason: gate.reason || "No waste is visible in this photo.",
@@ -497,10 +507,22 @@ export async function handleApiRequest(req, res) {
       try {
         analysis = await aiProvider.analyzeWaste(body);
       } catch (aiErr) {
+        // Calibrated classifier rejection (below conf/margin thresholds): surface
+        // it honestly instead of substituting a mock result.
+        if (aiErr?.statusCode === 400) {
+          console.log(`[AI] Classifier rejected image: ${aiErr.message}`);
+          store.logInference({ userId: auth.user.uid, outcome: "rejected", provider: aiProvider.constructor?.name || "unknown", reason: aiErr.message }).catch(() => {});
+          return json(res, 200, {
+            valid_waste_image: false,
+            reason: aiErr.message,
+            message: "This photo doesn't clearly contain recognizable waste. Please retake a closer, clearer photo.",
+          });
+        }
         console.warn("[AI] Primary provider failed, using fallback:", aiErr.message);
         try {
           const fallback = new MockAIProvider();
           analysis = await fallback.analyzeWaste(body);
+          store.logInference({ userId: auth.user.uid, outcome: "mock_fallback", provider: "mock", reason: aiErr.message }).catch(() => {});
         } catch (fallbackErr) {
           console.error("[AI] Fallback also failed:", fallbackErr.message);
           return json(res, 500, { error: { code: "AI_FAILED", message: "Analysis could not be completed. Please try again." } });
@@ -508,6 +530,14 @@ export async function handleApiRequest(req, res) {
       }
       const duplicate = await findDuplicateMatch({ location: body.location || null, aiAnalysis: analysis });
       const priority = calculatePriority(analysis, { address: body.location?.address || "", duplicateSupportCount: duplicate.isPotentialDuplicate ? 1 : 0, ageHours: 0 });
+      store.logInference({
+        userId: auth.user.uid,
+        outcome: "accepted",
+        provider: aiProvider.constructor?.name || "unknown",
+        wasteType: analysis.wasteType || "",
+        confidence: Number(analysis.confidence) || 0,
+        processingMs: Math.round((Number(analysis.processingTime) || 0) * 1000),
+      }).catch(() => {});
       return json(res, 200, {
         result: {
           wasteType: analysis.wasteType,
@@ -777,7 +807,22 @@ export async function handleApiRequest(req, res) {
       const auth = await requireAuth(req, res);
       if (!auth) return;
       const notifications = await store.getNotifications(auth.user.uid, auth.user.role);
-      return json(res, 200, { notifications: notifications.map((n) => ({ id: n.id, title: n.title, body: n.body, time: relativeTimeLabel(n.createdAt) })) });
+      return json(res, 200, {
+        notifications: notifications.map((n) => ({
+          id: n.id, title: n.title, body: n.body,
+          kind: n.kind || "info", reportId: n.reportId || "",
+          isRead: Boolean(n.isRead), time: relativeTimeLabel(n.createdAt), createdAt: n.createdAt,
+        })),
+        unreadCount: notifications.filter((n) => !n.isRead).length,
+      });
+    }
+
+    if (pathname === "/api/notifications/read-all" && req.method === "PUT") {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      const result = await store.markAllNotificationsRead(auth.user.uid);
+      publish("notification:read", { uid: auth.user.uid }, { uids: [auth.user.uid] });
+      return json(res, 200, { ok: true, ...result });
     }
 
     if (pathname === "/api/push/subscribe" && req.method === "POST") {
@@ -806,8 +851,13 @@ export async function handleApiRequest(req, res) {
     if (pathname === "/api/admin/dashboard" && req.method === "GET") {
       const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
-      const state = await store.getState();
-      return json(res, 200, { dashboard: buildDashboard(state) });
+      const [state, peopleStats, categoryMix, aiHealth] = await Promise.all([
+        store.getState(),
+        store.getPeopleStats().catch(() => null),
+        store.getCategoryMix(6).catch(() => []),
+        store.getInferenceStats().catch(() => null),
+      ]);
+      return json(res, 200, { dashboard: { ...buildDashboard(state), people: peopleStats, categoryMix, ai: aiHealth } });
     }
 
     if (pathname === "/api/hotspots" && req.method === "GET") {
@@ -1204,8 +1254,13 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
     if (pathname === "/api/admin/analytics" && req.method === "GET") {
       const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
-      const analytics = await store.getAnalytics();
-      return json(res, 200, { analytics });
+      const [analytics, aiHealth, peopleStats, categoryMix] = await Promise.all([
+        store.getAnalytics(),
+        store.getInferenceStats().catch(() => null),
+        store.getPeopleStats().catch(() => null),
+        store.getCategoryMix(6).catch(() => []),
+      ]);
+      return json(res, 200, { analytics: { ...analytics, ai: aiHealth, people: peopleStats, categoryMix } });
     }
 
     if (pathname === "/api/admin/activity-logs" && req.method === "GET") {

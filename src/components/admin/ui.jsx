@@ -39,6 +39,7 @@ const ICON_PATHS = {
   trendUp: ["m3 17 6-6 4 4 8-8", "M14 7h7v7"],
   trendDown: ["m3 7 6 6 4-4 8 8", "M21 10v7h-7"],
   flame: ["M12 22c4.42 0 8-3.58 8-8 0-3.5-2.5-6.5-4-8-.5 2-1.5 3-3 3 0-2-1-5-3-6 0 3-2 4.5-3 6.5S4 12 4 14c0 4.42 3.58 8 8 8Z"],
+  idCard: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "M19 8h-5", "M19 12h-8", "M19 16h-6"],
 };
 
 export function Icon({ name, size = 18, className = "", strokeWidth = 2 }) {

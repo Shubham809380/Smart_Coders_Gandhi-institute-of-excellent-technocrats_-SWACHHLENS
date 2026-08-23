@@ -70,6 +70,11 @@ export default function AdminDashboard() {
   }
 
   const k = kpiData?.kpis || {};
+  const people = kpiData?.people || null;
+  const rawMix = kpiData?.categoryMix || [];
+  const mixTotal = Math.max(1, rawMix.reduce((a, c) => a + (c.count || 0), 0));
+  const categoryMix = rawMix.map((c) => ({ ...c, share: Math.round(((c.count || 0) / mixTotal) * 100) }));
+  const maxCatShare = Math.max(1, ...categoryMix.map((c) => c.share || 0));
 
   return (
     <AdminLayout>
@@ -101,6 +106,29 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
+
+        {/* People strip */}
+        {people && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { icon: "zap", label: "Active now", value: people.activeNow ?? 0, hint: `${people.activeToday ?? 0} active today` },
+              { icon: "users", label: "Logins today", value: people.loginsToday ?? 0, hint: "recorded sign-ins" },
+              { icon: "truck", label: "Workers on duty", value: people.onDutyWorkers ?? 0, hint: `${people.workersWithFreshLocation ?? 0} sharing location` },
+              { icon: "idCard", label: "Total users", value: people.totalUsers ?? 0, hint: `${people.citizens ?? 0} citizens · ${people.workers ?? 0} workers` },
+            ].map((p) => (
+              <div key={p.label} className="adm-card p-3.5 flex items-center gap-3">
+                <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(0,168,150,0.12)", color: "var(--adm-primary)" }}>
+                  <Icon name={p.icon} size={14} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-lg font-extrabold tabular-nums leading-none">{p.value}</p>
+                  <p className="text-[11px] font-bold adm-text mt-1">{p.label}</p>
+                  <p className="text-[10px] adm-muted truncate">{p.hint}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Quick links */}
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -196,6 +224,29 @@ export default function AdminDashboard() {
                 </ul>
               )}
             </section>
+
+            {/* Category mix */}
+            {categoryMix.length > 0 && (
+              <section className="adm-card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-extrabold">Category mix</h3>
+                  <Link to="/admin/analytics" className="text-xs font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>Analytics →</Link>
+                </div>
+                <ul className="space-y-2">
+                  {categoryMix.map((c) => (
+                    <li key={c.category}>
+                      <div className="flex items-center justify-between text-[11px] mb-1">
+                        <span className="font-semibold adm-text truncate">{wasteTypeLabel(c.category)}</span>
+                        <span className="tabular-nums adm-muted">{c.count} · {c.share}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--adm-surface-2)" }}>
+                        <div className="h-full rounded-full" style={{ width: `${Math.max(4, (c.share / maxCatShare) * 100)}%`, background: "var(--adm-primary)" }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         </div>
       </div>

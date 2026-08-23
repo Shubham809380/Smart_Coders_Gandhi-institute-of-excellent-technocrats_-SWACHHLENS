@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/BottomNav.jsx";
 import { reportService, popSessionExpired } from "../../services.js";
+import { useLanguage } from "../../contexts/LanguageContext.jsx";
 
 const SEVERITY_COLORS = {
   critical: "#ef4444",
@@ -45,6 +46,7 @@ function formatTimeAgo(dateStr) {
 
 export default function MyReports() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("active");
@@ -131,10 +133,10 @@ export default function MyReports() {
       <main className="relative w-full flex flex-col px-4 pt-safe landscape:px-8 landscape:pt-4">
         <div className="flex items-center justify-between pt-3 mb-4">
           <h1 className="text-[22px] font-extrabold text-gray-900 tracking-tight">
-            My Reports
+            {t("myReports")}
           </h1>
           <span className="px-2.5 py-1 bg-primary/10 text-primary text-[12px] font-bold rounded-lg">
-            {reports.length} total
+            {t("quickTotalCount", { n: reports.length })}
           </span>
         </div>
 
@@ -171,7 +173,7 @@ export default function MyReports() {
               <span className="material-symbols-outlined text-gray-300 text-[32px]">assignment</span>
             </div>
             <p className="text-[15px] font-bold text-gray-400 mb-1">
-              {activeTab === "active" ? "No active reports" : "No resolved reports"}
+              {activeTab === "active" ? t("noActiveReports") : t("noResolvedReports")}
             </p>
             <p className="text-[13px] text-gray-300 font-medium">
               {activeTab === "active" ? "Submit a waste report to get started" : "Resolved reports will appear here"}

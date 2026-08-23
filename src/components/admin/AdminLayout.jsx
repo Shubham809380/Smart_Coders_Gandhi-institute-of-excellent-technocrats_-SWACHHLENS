@@ -2,43 +2,45 @@ import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { adminService, authService } from "../../services.js";
 import { useTheme } from "../../contexts/ThemeContext.jsx";
+import { useLanguage } from "../../contexts/LanguageContext.jsx";
 import { Icon, Chip, relativeTime } from "./ui.jsx";
 import { useLive } from "../../hooks/useLive.js";
 
 const NAV_SECTIONS = [
   {
-    label: "Operations",
+    labelKey: "secOperations",
     items: [
-      { to: "/admin/dashboard", icon: "layers", label: "Overview" },
-      { to: "/admin/map", icon: "map", label: "Live Map" },
-      { to: "/admin/queue", icon: "queue", label: "Priority Queue" },
+      { to: "/admin/dashboard", icon: "layers", labelKey: "adminDashboard" },
+      { to: "/admin/map", icon: "map", labelKey: "adminMap" },
+      { to: "/admin/queue", icon: "queue", labelKey: "adminQueue" },
     ],
   },
   {
-    label: "Quality",
+    labelKey: "secQuality",
     items: [
-      { to: "/admin/duplicates", icon: "copy", label: "Duplicate Review" },
-      { to: "/admin/verification", icon: "eye", label: "Verification" },
+      { to: "/admin/duplicates", icon: "copy", labelKey: "adminDuplicates" },
+      { to: "/admin/verification", icon: "eye", labelKey: "adminVerification" },
     ],
   },
   {
-    label: "Resources",
+    labelKey: "secResources",
     items: [
-      { to: "/admin/teams", icon: "users", label: "Teams & Fleet" },
-      { to: "/admin/recycling", icon: "recycle", label: "Recycling" },
+      { to: "/admin/teams", icon: "users", labelKey: "adminTeams" },
+      { to: "/admin/users", icon: "idCard", labelKey: "adminUsers" },
+      { to: "/admin/recycling", icon: "recycle", labelKey: "adminRecycling" },
     ],
   },
   {
-    label: "Insights",
+    labelKey: "secInsights",
     items: [
-      { to: "/admin/alerts", icon: "bell", label: "Alerts" },
-      { to: "/admin/analytics", icon: "chart", label: "Analytics" },
+      { to: "/admin/alerts", icon: "bell", labelKey: "adminAlerts" },
+      { to: "/admin/analytics", icon: "chart", labelKey: "adminAnalytics" },
     ],
   },
 ];
 
 const PAGE_TITLES = Object.fromEntries(
-  NAV_SECTIONS.flatMap((s) => s.items).map((i) => [i.to, i.label])
+  NAV_SECTIONS.flatMap((s) => s.items).map((i) => [i.to, i.labelKey])
 );
 
 const LAST_SEEN_KEY = "swachhlens-admin-alerts-last-seen";
@@ -155,9 +157,15 @@ function AlertBell() {
 export default function AdminLayout({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [me, setMe] = useState(() => authService.getSessionSnapshot().currentUser);
-  const title = PAGE_TITLES[location.pathname] || (location.pathname.startsWith("/admin/complaints/") ? "Complaint Detail" : "Admin");
+  const titleKey = PAGE_TITLES[location.pathname];
+  const title = titleKey
+    ? t(titleKey)
+    : location.pathname.startsWith("/admin/complaints/")
+      ? t("complaintDetail")
+      : t("adminConsole");
 
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
 
@@ -177,13 +185,13 @@ export default function AdminLayout({ children }) {
           <span className="flex items-center justify-center w-8 h-8 rounded-lg text-white font-black text-sm" style={{ background: "var(--adm-primary)" }}>S</span>
           <div className="leading-tight">
             <p className="font-extrabold text-sm tracking-tight">SwachhLens</p>
-            <p className="text-[10px] uppercase tracking-widest" style={{ color: "var(--adm-muted)" }}>Admin Console</p>
+            <p className="text-[10px] uppercase tracking-widest" style={{ color: "var(--adm-muted)" }}>{t("adminConsole")}</p>
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto adm-scroll py-3 px-3 space-y-4">
           {NAV_SECTIONS.map((section) => (
-            <div key={section.label}>
-              <p className="px-2 mb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--adm-muted)" }}>{section.label}</p>
+            <div key={section.labelKey}>
+              <p className="px-2 mb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--adm-muted)" }}>{t(section.labelKey)}</p>
               <ul className="space-y-0.5">
                 {section.items.map((item) => (
                   <li key={item.to}>
@@ -198,7 +206,7 @@ export default function AdminLayout({ children }) {
                       })}
                     >
                       <Icon name={item.icon} size={16} />
-                      {item.label}
+                      {t(item.labelKey)}
                     </NavLink>
                   </li>
                 ))}

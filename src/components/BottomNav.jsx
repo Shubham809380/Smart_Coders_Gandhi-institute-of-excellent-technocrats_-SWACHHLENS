@@ -1,26 +1,44 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { notificationService } from "../services.js";
-
-const navItems = [
-  { key: "home", label: "Home", icon: "home", path: "/home" },
-  { key: "explore", label: "Explore", icon: "explore", path: "/explore" },
-  { key: "report", label: "Report", icon: "photo_camera", path: "/report-waste" },
-  { key: "reports", label: "Reports", icon: "assignment", path: "/my-reports" },
-];
+import { useLive } from "../hooks/useLive.js";
+import { useLanguage } from "../contexts/LanguageContext.jsx";
 
 export default function BottomNav({ active }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
   const [notifCount, setNotifCount] = useState(0);
 
-  useEffect(() => {
-    notificationService.getNotifications().then((n) => setNotifCount(n.length)).catch(() => {});
+  const refreshCount = useCallback(() => {
+    notificationService.getNotifications()
+      .then((n) => setNotifCount(n.filter((x) => !x.isRead).length))
+      .catch(() => {});
   }, []);
+
+  useEffect(() => { refreshCount(); }, [refreshCount]);
+
+  // Keep the badge live: new notifications increment, opening the
+  // notifications screen clears it.
+  useLive(
+    (evt) => {
+      if (evt === "notification:new") refreshCount();
+    },
+    ["notification:new"],
+    { pollMs: 45000, poll: refreshCount }
+  );
+
+  const navItems = [
+    { key: "home", label: t("navHome"), icon: "home", path: "/home" },
+    { key: "explore", label: t("navExplore"), icon: "explore", path: "/explore" },
+    { key: "report", label: t("navReport"), icon: "photo_camera", path: "/report-waste" },
+    { key: "reports", label: t("navReports"), icon: "assignment", path: "/my-reports" },
+  ];
 
   const currentActive = active || (() => {
     const path = location.pathname;
     if (path === "/home") return "home";
+    if (path === "/notifications") return "home";
     if (path === "/explore") return "explore";
     if (path === "/report-waste") return "report";
     if (path === "/my-reports") return "reports";
@@ -118,7 +136,7 @@ export default function BottomNav({ active }) {
                 : "text-gray-500 font-medium group-hover:text-gray-900"
             }`}
           >
-            Profile
+            {t("navProfile")}
           </span>
         </button>
       </div>

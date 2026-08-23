@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/BottomNav.jsx";
 import { reportService, authService, notificationService } from "../../services.js";
+import { useLive } from "../../hooks/useLive.js";
+import { useLanguage } from "../../contexts/LanguageContext.jsx";
 
 const STATUS_CONFIG = {
   resolved: { label: "Resolved", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500" },
@@ -83,6 +85,7 @@ function StatCard({ icon, iconBg, iconColor, value, label, loading }) {
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -97,20 +100,31 @@ export default function HomePage() {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      const [reportsData, notifs] = await Promise.all([
+      const [reportsData, snap] = await Promise.all([
         reportService.getReports(),
-        notificationService.getNotifications().catch(() => []),
+        authService.getSessionSnapshot(),
       ]);
       setReports(reportsData);
-      setNotifCount(notifs.length);
-      const snap = authService.getSessionSnapshot();
       setCurrentUser(snap.currentUser);
+      // Unread badge — refreshed by the live hook on notification:new.
+      const notifs = await notificationService.getNotifications().catch(() => []);
+      setNotifCount(notifs.filter((n) => !n.isRead).length);
     } catch {}
     setLoading(false);
     setRefreshing(false);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Realtime: a fresh notification bumps the bell badge instantly.
+  useLive(
+    (evt) => {
+      if (evt === "notification:new") loadData(true);
+      if (evt === "waste:status:update") loadData();
+    },
+    ["notification:new", "waste:status:update"],
+    { pollMs: 45000, poll: () => loadData() }
+  );
 
   const handleTouchStart = useCallback((e) => {
     if (window.scrollY <= 0) {
@@ -145,7 +159,7 @@ export default function HomePage() {
   ).length;
 
   const h = new Date().getHours();
-  const greeting = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  const greeting = h < 12 ? t("greetingMorning") : h < 17 ? t("greetingAfternoon") : t("greetingEvening");
   const userName = currentUser?.name?.split(" ")[0] || "there";
 
   const recentReports = reports.slice(0, 5);
@@ -156,7 +170,7 @@ export default function HomePage() {
 
   return (
     <div
-      className="bg-[#f5f7fa] min-h-screen max-w-lg mx-auto pb-24 relative"
+      className="bg-background min-h-screen max-w-lg mx-auto pb-24 relative"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -192,8 +206,8 @@ export default function HomePage() {
                   {(h < 12) ? "\u{1F31E}" : (h < 17) ? "\u{2600}\u{FE0F}" : "\u{1F319}"}
                 </span>
               </div>
-              <p className="text-[13px] text-gray-400 font-medium">
-                {userName}, let's keep your neighborhood clean.
+              <p className="text-[13px] text-on-surface-variant font-medium">
+                {t("homeTagline", { name: userName })}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -243,18 +257,18 @@ export default function HomePage() {
                   </span>
                 </div>
                 <span className="text-[10px] font-extrabold text-white/60 tracking-[0.12em] uppercase">
-                  AI Powered Reporting
+                  {t("aiPoweredBadge")}
                 </span>
               </div>
               <p className="text-[19px] font-bold leading-[1.25] text-white max-w-[28ch]">
-                See waste around you? Capture it and let AI handle the rest.
+                {t("heroHeadline")}
               </p>
               <button
                 onClick={() => navigate("/report-waste")}
                 className="mt-1 self-start flex items-center justify-center gap-2.5 bg-white text-[#006b2c] font-bold px-6 py-3 rounded-2xl transition-all duration-200 active:scale-[0.96] hover:shadow-xl hover:shadow-white/20"
               >
                 <span className="material-symbols-outlined text-[20px]">photo_camera</span>
-                <span className="text-[14px]">Report Waste</span>
+                <span className="text-[14px]">{t("reportNow")}</span>
               </button>
             </div>
           </div>
@@ -266,7 +280,7 @@ export default function HomePage() {
               iconBg="bg-cyan-50"
               iconColor="text-cyan-600"
               value={reports.length}
-              label="Reports"
+              label={t("statReports")}
               loading={loading}
             />
             <StatCard
@@ -274,7 +288,7 @@ export default function HomePage() {
               iconBg="bg-emerald-50"
               iconColor="text-emerald-600"
               value={resolved}
-              label="Resolved"
+              label={t("statResolved")}
               loading={loading}
             />
             <StatCard
@@ -282,7 +296,7 @@ export default function HomePage() {
               iconBg="bg-amber-50"
               iconColor="text-amber-600"
               value={inProgress}
-              label="In Progress"
+              label={t("statInProgress")}
               loading={loading}
             />
             <StatCard
@@ -290,7 +304,7 @@ export default function HomePage() {
               iconBg="bg-red-50"
               iconColor="text-red-600"
               value={critical}
-              label="Urgent"
+              label={t("statUrgent")}
               loading={loading}
             />
           </div>
@@ -305,8 +319,8 @@ export default function HomePage() {
                 <span className="material-symbols-outlined text-[22px]">list_alt</span>
               </div>
               <div className="min-w-0">
-                <p className="text-[13px] font-bold text-gray-900">My Reports</p>
-                <p className="text-[11px] text-gray-400 font-medium mt-0.5">{reports.length} total</p>
+                <p className="text-[13px] font-bold text-gray-900">{t("myReports")}</p>
+                <p className="text-[11px] text-gray-400 font-medium mt-0.5">{t("quickTotalCount", { n: reports.length })}</p>
               </div>
             </button>
             <button
@@ -317,8 +331,8 @@ export default function HomePage() {
                 <span className="material-symbols-outlined text-[22px]">explore</span>
               </div>
               <div className="min-w-0">
-                <p className="text-[13px] font-bold text-gray-900">Explore Map</p>
-                <p className="text-[11px] text-gray-400 font-medium mt-0.5">Nearby issues</p>
+                <p className="text-[13px] font-bold text-gray-900">{t("quickExploreMap")}</p>
+                <p className="text-[11px] text-gray-400 font-medium mt-0.5">{t("quickNearbyIssues")}</p>
               </div>
             </button>
           </div>
@@ -329,13 +343,13 @@ export default function HomePage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <h2 className="text-[16px] font-extrabold text-gray-900">Urgent Attention</h2>
+                  <h2 className="text-[16px] font-extrabold text-gray-900">{t("urgentAttention")}</h2>
                 </div>
                 <button
                   onClick={() => navigate("/my-reports")}
                   className="text-[12px] font-bold text-green-700 flex items-center gap-0.5 hover:gap-1.5 transition-all duration-200"
                 >
-                  View All
+                  {t("viewAll")}
                   <span className="material-symbols-outlined text-[16px]">chevron_right</span>
                 </button>
               </div>
@@ -383,12 +397,12 @@ export default function HomePage() {
           {/* Recent Reports */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-[16px] font-extrabold text-gray-900">Recent Reports</h2>
+              <h2 className="text-[16px] font-extrabold text-gray-900">{t("recentReports")}</h2>
               <button
                 onClick={() => navigate("/my-reports")}
                 className="text-[12px] font-bold text-green-700 flex items-center gap-0.5 hover:gap-1.5 transition-all duration-200"
               >
-                View All
+                {t("viewAll")}
                 <span className="material-symbols-outlined text-[16px]">chevron_right</span>
               </button>
             </div>
@@ -452,16 +466,16 @@ export default function HomePage() {
                   <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-4">
                     <span className="material-symbols-outlined text-[32px] text-green-400">eco</span>
                   </div>
-                  <p className="text-[15px] text-gray-700 font-bold">No reports yet</p>
+                  <p className="text-[15px] text-gray-700 font-bold">{t("noReportsYet")}</p>
                   <p className="text-[13px] text-gray-400 mt-1.5 max-w-[240px] mx-auto leading-relaxed">
-                    Tap the camera button below to report waste in your area.
+                    {t("noReportsHint")}
                   </p>
                   <button
                     onClick={() => navigate("/report-waste")}
                     className="mt-5 inline-flex items-center gap-2 bg-green-600 text-white font-bold px-5 py-2.5 rounded-xl text-[13px] active:scale-95 transition-all"
                   >
                     <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-                    Report Now
+                    {t("reportNowShort")}
                   </button>
                 </div>
               )}

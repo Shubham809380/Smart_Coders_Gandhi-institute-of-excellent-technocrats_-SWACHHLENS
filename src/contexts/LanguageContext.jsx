@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { translate } from "../i18n/translations.js";
-import { profileService } from "../services.js";
+import { profileService, authService } from "../services.js";
 
 const LANG_KEY = "swachhlens-lang";
 const SUPPORTED = ["en", "hi", "or"];
@@ -23,13 +23,37 @@ export function LanguageProvider({ children }) {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const setLang = useCallback((next) => {
+  // persist=false is used when the value comes from the signed-in user's
+  // server-side profile (avoids a pointless update round-trip).
+  const applyLang = useCallback((next, { persist = true } = {}) => {
     if (!SUPPORTED.includes(next)) return;
-    setLangState(next);
+    setLangState((prev) => {
+      if (prev !== next && persist) {
+        // Best-effort server sync so the preference survives reinstalls.
+        profileService.updateProfile({ language: next }).catch(() => {});
+      }
+      return next;
+    });
     try { window.localStorage.setItem(LANG_KEY, next); } catch { /* private mode */ }
-    // Best-effort server sync so the preference survives reinstalls.
-    profileService.updateProfile({ language: next }).catch(() => {});
   }, []);
+
+  const setLang = useCallback((next) => applyLang(next), [applyLang]);
+
+  // The signed-in account's saved language wins over stale localStorage so the
+  // preference follows the user across devices (rehydrated on boot + login).
+  useEffect(() => {
+    let lastUid = null;
+    return authService.subscribe((snap) => {
+      const uid = snap.currentUser?.uid || null;
+      const pref = snap.currentUser?.language;
+      if (!uid || uid === lastUid) {
+        if (!uid) lastUid = null;
+        return;
+      }
+      lastUid = uid;
+      if (SUPPORTED.includes(pref)) applyLang(pref, { persist: false });
+    });
+  }, [applyLang]);
 
   const t = useCallback((key, params) => translate(lang, key, params), [lang]);
 

@@ -32,7 +32,7 @@ function StatCard({ icon, label, value, color, loading: isLoading }) {
       elevation={0}
       sx={{
         minWidth: 130, borderRadius: 3, border: "1px solid", borderColor: "grey.100",
-        background: "white", flexShrink: 0,
+        background: "var(--surface)", flexShrink: 0,
       }}
     >
       <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
@@ -41,10 +41,10 @@ function StatCard({ icon, label, value, color, loading: isLoading }) {
             {icon}
           </Box>
         </Box>
-        <Typography variant="h5" fontWeight={800} color="grey.900" lineHeight={1}>
+        <Typography variant="h5" fontWeight={800} color="text.primary" lineHeight={1}>
           {isLoading ? <Skeleton width={40} /> : value}
         </Typography>
-        <Typography variant="caption" fontWeight={600} color="grey.500" sx={{ mt: 0.5, display: "block" }}>
+        <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
           {label}
         </Typography>
       </CardContent>
@@ -83,6 +83,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [authStats, setAuthStats] = useState(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationPermission, setLocationPermission] = useState("checking");
 
@@ -107,6 +108,7 @@ export default function Profile() {
   useEffect(() => {
     const snapshot = authService.getSessionSnapshot();
     setCurrentUser(snapshot.currentUser);
+    setAuthStats(snapshot.stats || null);
     setEditName(snapshot.currentUser?.name || "");
     setEditPhone(snapshot.currentUser?.phone || "");
     checkLocationPermission();
@@ -169,7 +171,9 @@ export default function Profile() {
   const totalReports = reports.length;
   const resolvedReports = reports.filter((r) => r.status === "resolved").length;
   const pendingReports = reports.filter((r) => r.status !== "resolved" && r.status !== "rejected").length;
-  const civicScore = totalReports * 10 + resolvedReports * 20;
+  // Server-computed civic score (includes feedback contribution) when available.
+  const serverStats = authStats || null;
+  const civicScore = serverStats?.civicScore ?? totalReports * 10 + resolvedReports * 20;
 
   const userName = currentUser?.name || "User";
   const userEmail = currentUser?.email || "";
@@ -225,7 +229,7 @@ export default function Profile() {
       <Paper elevation={0} sx={{ borderRadius: 0, borderBottom: "1px solid", borderColor: "grey.100" }}>
         <Container maxWidth="sm">
           <Toolbar sx={{ justifyContent: "space-between", px: 0, py: 1 }}>
-            <Typography variant="h5" fontWeight={800} color="grey.900">
+            <Typography variant="h5" fontWeight={800} color="text.primary">
               Profile
             </Typography>
             <Tooltip title="Edit profile">
@@ -237,7 +241,7 @@ export default function Profile() {
                   setEditError("");
                   setEditOpen(true);
                 }}
-                sx={{ bgcolor: "white", border: "1px solid", borderColor: "grey.100", "&:hover": { bgcolor: "grey.50" } }}
+                sx={{ bgcolor: "var(--surface)", border: "1px solid", borderColor: "grey.100", "&:hover": { bgcolor: "grey.50" } }}
               >
                 <Edit fontSize="small" sx={{ color: "grey.500" }} />
               </IconButton>

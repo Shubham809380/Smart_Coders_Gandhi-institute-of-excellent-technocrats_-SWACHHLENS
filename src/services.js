@@ -163,6 +163,8 @@ const state = {
     reports: [],
     teams: [],
     notifications: [],
+    unreadNotificationCount: 0,
+    citizenStats: null,
     currentUser: null,
     notificationPromptShown: stored.notificationPromptShown || false,
     devicePermissionPromptShown: stored.devicePermissionPromptShown || false,
@@ -230,9 +232,11 @@ export const appService = {
             try {
                 const data = await api("/auth/me", { timeoutMs: 8000 });
                 state.currentUser = data.currentUser;
+                state.citizenStats = data.stats || null;
                 const appState = data.role && data.role !== "citizen" ? APP_STATES.AUTHENTICATED_ADMIN : APP_STATES.AUTHENTICATED_CITIZEN;
                 state.startup = { appState, loading: false, error: "" };
                 lastErr = null;
+                emitAuthChange(); // let subscribers (language/theme) react to the restored session
                 ensurePushSubscription();
                 break;
             } catch (err) {
@@ -298,6 +302,7 @@ export const authService = {
             onboardingCompleted: state.onboardingCompleted,
             error: state.startup.error,
             isAuthenticated: Boolean(state.currentUser),
+            stats: clone(state.citizenStats),
         };
     },
     getCurrentRole() { return state.currentUser?.role || "citizen"; },
@@ -567,10 +572,22 @@ export const notificationService = {
         try {
             const data = await api("/notifications");
             state.notifications = data.notifications || [];
+            state.unreadNotificationCount = Number(data.unreadCount) || 0;
             return clone(state.notifications);
         } catch {
             return clone(state.notifications);
         }
+    },
+    getUnreadCount() {
+        return state.unreadNotificationCount || 0;
+    },
+    async markAllAsRead() {
+        try {
+            await api("/notifications/read-all", { method: "PUT" });
+        } catch { /* best-effort */ }
+        state.notifications = (state.notifications || []).map((n) => ({ ...n, isRead: true }));
+        state.unreadNotificationCount = 0;
+        return clone(state.notifications);
     },
 };
 

@@ -303,7 +303,109 @@ export const store = {
     } else {
       res = await query("SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC", [userId]);
     }
-    return res.rows.map((r) => ({ id: r.id, title: r.title, body: r.body, userId: r.user_id, createdAt: r.created_at }));
+    return res.rows.map((r) => ({ id: r.id, title: r.title, body: r.body, userId: r.user_id, kind: r.kind || "info", reportId: r.report_id || "", isRead: Boolean(r.is_read), createdAt: r.created_at }));
+  },
+
+  async markAllNotificationsRead(userId) {
+    const res = await query(
+      "UPDATE notifications SET is_read = true WHERE (user_id = $1 OR user_id = 'user-admin') AND is_read = false",
+      [userId]
+    );
+    return { updated: res.rowCount || 0 };
+  },
+
+  async logInference({ userId, outcome, provider, wasteType, confidence, reason, processingMs }) {
+    const id = `inf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    await query(
+      "INSERT INTO inference_logs (id, user_id, outcome, provider, waste_type, confidence, reason, processing_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+      [id, userId || "", outcome || "accepted", provider || "", wasteType || "", Number(confidence) || 0, reason || "", Math.round(Number(processingMs) || 0)]
+    );
+    return { id };
+  },
+
+  async getInferenceStats() {
+    const [totalsRes, weekRes, byOutcomeRes, avgConfRes] = await Promise.all([
+      query("SELECT COUNT(*)::int AS n FROM inference_logs"),
+      query("SELECT COUNT(*)::int AS n FROM inference_logs WHERE created_at > NOW() - INTERVAL '7 days'"),
+      query("SELECT outcome, COUNT(*)::int AS count FROM inference_logs GROUP BY outcome ORDER BY count DESC"),
+      query("SELECT COALESCE(AVG(confidence), 0) AS avg FROM inference_logs WHERE outcome = 'accepted'"),
+    ]);
+    const byOutcome = Object.fromEntries(byOutcomeRes.rows.map((r) => [r.outcome, Number(r.count)]));
+    const weekTotal = Number(weekRes.rows[0]?.n || 0);
+    const weekRejected = byOutcome.gate_rejected || 0;
+    return {
+      total: Number(totalsRes.rows[0]?.n || 0),
+      last7d: weekTotal,
+      byOutcome,
+      rejectionRatePct: weekTotal ? Math.round((weekRejected / weekTotal) * 100) : null,
+      avgAcceptedConfidence: Math.round(Number(avgConfRes.rows[0]?.avg || 0) * 10) / 10,
+    };
+  },
+
+  // Live people counters for the admin dashboard. Sessions.last_activity_at is
+  // touched on every authenticated request, so "active now/today" is derived
+  // without any extra client pings.
+  async getPeopleStats() {
+    const [usersByRoleRes, activeNowRes, activeTodayRes, onDutyRes, loginsTodayRes, workersWithLocationRes] = await Promise.all([
+      query("SELECT role, COUNT(*)::int AS n FROM users WHERE is_active <> false GROUP BY role"),
+      query("SELECT COUNT(DISTINCT uid)::int AS n FROM sessions WHERE last_activity_at > NOW() - INTERVAL '15 minutes'"),
+      query("SELECT COUNT(DISTINCT uid)::int AS n FROM sessions WHERE last_activity_at > NOW() - INTERVAL '24 hours'"),
+      query("SELECT COUNT(*)::int AS n FROM users WHERE role = 'cleanup_worker' AND is_active <> false AND duty_status = 'on_duty'"),
+      query("SELECT COUNT(*)::int AS n FROM activity_logs WHERE action = 'login' AND timestamp::date = CURRENT_DATE"),
+      query("SELECT COUNT(*)::int AS n FROM users WHERE role = 'cleanup_worker' AND current_lat IS NOT NULL AND last_location_at > NOW() - INTERVAL '2 hours'"),
+    ]);
+    const byRole = Object.fromEntries(usersByRoleRes.rows.map((r) => [r.role, Number(r.n)]));
+    return {
+      totalUsers: Object.values(byRole).reduce((a, b) => a + b, 0),
+      citizens: byRole.citizen || 0,
+      workers: byRole.cleanup_worker || 0,
+      admins: ["admin", "super_admin", "ward_officer", "sanitation_supervisor"].reduce((a, r) => a + (byRole[r] || 0), 0),
+      activeNow: Number(activeNowRes.rows[0]?.n || 0),
+      activeToday: Number(activeTodayRes.rows[0]?.n || 0),
+      loginsToday: Number(loginsTodayRes.rows[0]?.n || 0),
+      onDutyWorkers: Number(onDutyRes.rows[0]?.n || 0),
+      workersWithFreshLocation: Number(workersWithLocationRes.rows[0]?.n || 0),
+    };
+  },
+
+  async getCategoryMix(limit = 8) {
+    const res = await query(
+      `SELECT ai_waste_type AS category, COUNT(*)::int AS count
+       FROM reports WHERE status != 'duplicate' AND ai_waste_type != ''
+       GROUP BY ai_waste_type ORDER BY count DESC LIMIT $1`,
+      [limit]
+    );
+    return res.rows.map((r) => ({ category: r.category, count: Number(r.count) }));
+  },
+
+  // Server-side civic score so every client shows the same number.
+  // Formula: reports*10 + resolved*20 + feedbackSubmitted*5.
+  async getCitizenStats(uid) {
+    const res = await query(
+      `SELECT COUNT(*)::int AS total,
+              SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END)::int AS resolved,
+              SUM(CASE WHEN feedback_rating IS NOT NULL THEN 1 ELSE 0 END)::int AS feedback_given,
+              AVG(feedback_rating) AS avg_rating_given
+       FROM reports WHERE citizen_id = $1`,
+      [uid]
+    );
+    const row = res.rows[0] || {};
+    const totalReports = Number(row.total || 0);
+    const resolvedReports = Number(row.resolved || 0);
+    const feedbackGiven = Number(row.feedback_given || 0);
+    return {
+      totalReports,
+      resolvedReports,
+      pendingReports: totalReports - resolvedReports - (await this._rejectedCount(uid)),
+      feedbackGiven,
+      avgRatingGiven: row.avg_rating_given ? Math.round(Number(row.avg_rating_given) * 10) / 10 : null,
+      civicScore: totalReports * 10 + resolvedReports * 20 + feedbackGiven * 5,
+    };
+  },
+
+  async _rejectedCount(uid) {
+    const res = await query("SELECT COUNT(*)::int AS n FROM reports WHERE citizen_id = $1 AND status = 'rejected'", [uid]);
+    return Number(res.rows[0]?.n || 0);
   },
 
   async getHotspots() {

@@ -22,6 +22,7 @@ const SuccessPage = lazy(() => import("./pages/citizen/SuccessPage"));
 const TrackingCleanup = lazy(() => import("./pages/citizen/TrackingCleanup"));
 const MyReports = lazy(() => import("./pages/citizen/MyReports"));
 const Profile = lazy(() => import("./pages/citizen/Profile"));
+const NotificationsPage = lazy(() => import("./pages/citizen/NotificationsPage"));
 
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const LiveMap = lazy(() => import("./pages/admin/LiveMap"));
@@ -33,6 +34,7 @@ const TeamsFleet = lazy(() => import("./pages/admin/TeamsFleet"));
 const RecyclingRouting = lazy(() => import("./pages/admin/RecyclingRouting"));
 const Analytics = lazy(() => import("./pages/admin/Analytics"));
 const AlertsCenter = lazy(() => import("./pages/admin/AlertsCenter"));
+const UsersManagement = lazy(() => import("./pages/admin/UsersManagement"));
 
 const WorkerTasks = lazy(() => import("./pages/worker/WorkerTasks"));
 const TaskDetail = lazy(() => import("./pages/worker/TaskDetail"));
@@ -172,6 +174,11 @@ export default function App() {
               <MyReports />
             </ProtectedRoute>
           } />
+          <Route path="/notifications" element={
+            <ProtectedRoute allowedRoles={[...CITIZEN_ROLES, ...WORKER_ROLES, ...ADMIN_ROLES]}>
+              <NotificationsPage />
+            </ProtectedRoute>
+          } />
           <Route path="/profile" element={
             <ProtectedRoute allowedRoles={[...CITIZEN_ROLES, ...WORKER_ROLES, ...ADMIN_ROLES]}>
               <Profile />
@@ -249,6 +256,11 @@ export default function App() {
           <Route path="/admin/teams" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}>
               <TeamsFleet />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/users" element={
+            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
+              <UsersManagement />
             </ProtectedRoute>
           } />
           <Route path="/admin/recycling" element={

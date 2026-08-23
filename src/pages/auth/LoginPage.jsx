@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useGoogleLogin } from "@react-oauth/google";
 import { authService, popSessionExpired } from "../../services.js";
+import { LANGUAGES } from "../../i18n/translations.js";
+import { useLanguage } from "../../contexts/LanguageContext.jsx";
 import logo from "../../logo.svg";
 
 function BrandPanel() {
@@ -119,6 +121,7 @@ function BrandPanel() {
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t, lang, setLang } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -259,25 +262,44 @@ export default function LoginPage() {
         {/* Form Area */}
         <div className="flex-1 flex items-center justify-center p-6 sm:p-8">
           <div className="w-full max-w-md">
+            {/* Language switcher — visible before signing in */}
+            <div className="stagger-0 flex justify-end mb-2">
+              <div className="flex border border-outline-variant rounded-lg p-0.5 bg-surface-container">
+                {LANGUAGES.map((opt) => (
+                  <button
+                    key={opt.code}
+                    type="button"
+                    onClick={() => setLang(opt.code)}
+                    title={opt.label}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                      lang === opt.code ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container-high"
+                    }`}
+                    style={{ fontFamily: "Manrope" }}
+                  >
+                    {opt.native}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="stagger-1">
               <h2 className="text-3xl font-extrabold text-on-background mb-2" style={{ fontFamily: "Manrope" }}>
-                Welcome back
+                {t("welcomeBack")}
               </h2>
               <p className="text-on-surface-variant mb-6" style={{ fontFamily: "Manrope" }}>
-                Sign in to continue
+                {t("signInToContinue")}
               </p>
             </div>
 
             {/* Role Selector */}
             <div className="stagger-2 mb-6">
               <p className="text-xs font-semibold text-on-surface-variant mb-2.5 uppercase tracking-wider" style={{ fontFamily: "Manrope" }}>
-                Sign in as
+                {t("signInAs")}
               </p>
               <div className="flex bg-surface-container rounded-xl p-1 gap-1">
                 {[
-                  { key: "citizen", label: "Citizen", icon: "person" },
-                  { key: "worker", label: "Worker", icon: "engineering" },
-                  { key: "admin", label: "Admin", icon: "admin_panel_settings" },
+                  { key: "citizen", label: t("roleCitizen"), icon: "person" },
+                  { key: "worker", label: t("roleWorker"), icon: "engineering" },
+                  { key: "admin", label: t("roleAdmin"), icon: "admin_panel_settings" },
                 ].map(function (opt) {
                   return (
                     <button
@@ -340,7 +362,7 @@ export default function LoginPage() {
                   <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                 </svg>
                 <span className="text-sm font-semibold text-gray-700" style={{ fontFamily: "Manrope" }}>
-                  Continue with Google
+                  {t("continueWithGoogle")}
                 </span>
               </button>
             </div>
@@ -349,7 +371,7 @@ export default function LoginPage() {
             <div className="stagger-3 flex items-center gap-4 my-6">
               <div className="flex-1 h-px bg-outline-variant" />
               <span className="text-xs text-on-surface-variant whitespace-nowrap" style={{ fontFamily: "Manrope" }}>
-                or continue with email
+                {t("orContinueEmail")}
               </span>
               <div className="flex-1 h-px bg-outline-variant" />
             </div>
@@ -366,7 +388,7 @@ export default function LoginPage() {
                     type="email"
                     value={email}
                     onChange={function (e) { setEmail(e.target.value); }}
-                    placeholder="Email address"
+                    placeholder={t("emailPlaceholder")}
                     className="w-full pl-12 pr-4 py-3 bg-surface-container border border-outline-variant rounded-xl text-on-background placeholder:text-on-surface-variant/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-200"
                     style={{ fontFamily: "Manrope" }}
                   />
@@ -383,7 +405,7 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={function (e) { setPassword(e.target.value); }}
-                    placeholder="Password"
+                    placeholder={t("passwordPlaceholder")}
                     className="w-full pl-12 pr-12 py-3 bg-surface-container border border-outline-variant rounded-xl text-on-background placeholder:text-on-surface-variant/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-200"
                     style={{ fontFamily: "Manrope" }}
                   />
@@ -418,7 +440,7 @@ export default function LoginPage() {
                     </div>
                   </div>
                   <span className="text-sm text-on-surface-variant" style={{ fontFamily: "Manrope" }}>
-                    Remember me
+                    {t("rememberMe")}
                   </span>
                 </label>
                 <button
@@ -427,7 +449,7 @@ export default function LoginPage() {
                   className="text-sm text-primary font-semibold hover:underline transition-colors"
                   style={{ fontFamily: "Manrope" }}
                 >
-                  Forgot password?
+                  {t("forgotPassword")}
                 </button>
               </div>
 
@@ -445,7 +467,7 @@ export default function LoginPage() {
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
                   ) : (
-                    "Sign In"
+                    t("signInButton")
                   )}
                 </button>
               </div>
@@ -453,12 +475,12 @@ export default function LoginPage() {
 
             {/* Footer */}
             <p className="text-center text-sm text-on-surface-variant mt-8" style={{ fontFamily: "Manrope" }}>
-              Don't have an account?{" "}
+              {t("noAccount")}{" "}
               <button
                 onClick={function () { navigate("/signup"); }}
                 className="text-primary font-semibold hover:underline transition-colors"
               >
-                Sign up
+                {t("signUpLink")}
               </button>
             </p>
           </div>

@@ -657,6 +657,9 @@ export class OnnxAIProviderWithFallback {
       this._consecutiveFailures = 0;
       return result;
     } catch (err) {
+      // Calibrated rejection (below conf/margin thresholds) is a legitimate
+      // verdict, not an infrastructure failure — propagate it to the caller.
+      if (err?.statusCode === 400) throw err;
       this._consecutiveFailures++;
       console.error(`[AI:onnx] inference error (attempt ${this._consecutiveFailures}):`, err.message);
       const { MockAIProvider } = await import("./provider.js");

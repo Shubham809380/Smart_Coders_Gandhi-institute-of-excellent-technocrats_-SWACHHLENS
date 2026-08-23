@@ -119,6 +119,57 @@ export default function Analytics() {
           ))}
         </div>
 
+        {/* AI health */}
+        {data.ai && (
+          <section className="adm-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(0,168,150,0.12)", color: "var(--adm-primary)" }}><Icon name="sparkles" size={14} /></span>
+              <h3 className="text-sm font-extrabold">AI classifier health</h3>
+              <Chip tone="info" dot>ONNX</Chip>
+              <span className="ml-auto text-[11px] adm-muted">{data.ai.last7d ?? 0} inferences in last 7 days</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+              <div className="rounded-lg p-2.5 text-center" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none">{data.ai.total ?? 0}</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest adm-muted mt-1">Total inferences</p>
+              </div>
+              <div className="rounded-lg p-2.5 text-center" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none">{data.ai.rejectionRatePct != null ? `${data.ai.rejectionRatePct}%` : "—"}</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest adm-muted mt-1">Gate rejection rate</p>
+              </div>
+              <div className="rounded-lg p-2.5 text-center" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none">{data.ai.avgAcceptedConfidence != null ? `${Math.round(data.ai.avgAcceptedConfidence * 100)}%` : "—"}</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest adm-muted mt-1">Avg accepted confidence</p>
+              </div>
+              <div className="rounded-lg p-2.5 text-center" style={{ background: "var(--adm-surface-2)" }}>
+                <p className="text-lg font-extrabold tabular-nums leading-none">{(data.ai.byOutcome?.mock_fallback || 0)}</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest adm-muted mt-1">Mock fallbacks</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(data.ai.byOutcome || {}).map(([outcome, count]) => {
+                const total = Object.values(data.ai.byOutcome || {}).reduce((a, b) => a + b, 0) || 1;
+                const pct = Math.round((count / total) * 100);
+                const color = outcome === "accepted" ? "var(--adm-ok)" : outcome === "gate_rejected" ? "var(--adm-warn)" : "var(--adm-danger)";
+                return (
+                  <div key={outcome}>
+                    <div className="flex justify-between text-[11px] font-semibold mb-1">
+                      <span className="capitalize">{outcome.replace(/_/g, " ")}</span>
+                      <span className="tabular-nums adm-muted">{count} · {pct}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--adm-surface-2)" }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {Object.keys(data.ai.byOutcome || {}).length === 0 && (
+                <p className="text-xs adm-muted">No AI inference activity recorded yet.</p>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <section className="adm-card p-4">
