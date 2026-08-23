@@ -13,6 +13,7 @@ import {
   createSessionToken,
   formatReportForClient,
   formatTeamForClient,
+  hammingHex,
   haversineMeters,
   nowIso,
   passwordMatches,
@@ -155,23 +156,107 @@ async function getAssignedWorkerUids(report) {
 // case a cold instance writes once more).
 const LOCATION_WRITE_TS = new Map();
 
+// Duplicate detection pipeline (real, layered):
+//   1. Coarse filter: same waste category + GPS within 700 m + created in the
+//      last 48 h (haversine).
+//   2. Image evidence: 64-bit dHash comparison of both photos. Hamming
+//      distance <= 10 confirms the two photos show the same scene and yields
+//      a genuine perceptual-similarity score; otherwise the match stays
+//      geo/time-based with an honestly-labelled similarity proxy.
+// Reports whose duplicate group was already reviewed/dismissed never re-flag.
 async function findDuplicateMatch(incoming) {
   const state = await store.getState();
   const lookbackMs = 1000 * 60 * 60 * 48;
+  const incomingHash = incoming.aiAnalysis?.detectionSummary?.phash || "";
   const candidates = state.reports.filter((report) => {
+    if (report.duplicateGroupDismissed) return false;
     const reportAgeMs = Date.now() - new Date(report.createdAt).getTime();
     if (reportAgeMs > lookbackMs) return false;
     if (!report.location?.latitude || !incoming.location?.latitude) return false;
     const dist = haversineMeters(report.location, incoming.location);
     return dist <= 700 && report.aiAnalysis?.wasteType === incoming.aiAnalysis?.wasteType;
   });
-  if (!candidates.length) return { isPotentialDuplicate: false, primaryReportId: null, similarityScore: 0.14, distanceMeters: 0 };
-  const match = candidates.map((r) => ({ r, d: Math.round(haversineMeters(r.location, incoming.location)) })).sort((a, b) => a.d - b.d)[0];
-  return { isPotentialDuplicate: true, primaryReportId: match.r.id, similarityScore: Number(Math.min(0.92, 0.35 + (700 - match.d) / 1000).toFixed(2)), distanceMeters: match.d };
+  if (!candidates.length) {
+    return { isPotentialDuplicate: false, primaryReportId: null, similarityScore: 0.14, distanceMeters: 0, method: incomingHash ? "dhash+geo" : "geo_time_category" };
+  }
+  const scored = candidates.map((r) => ({
+    r,
+    d: Math.round(haversineMeters(r.location, incoming.location)),
+    hashDist: incomingHash && r.aiAnalysis?.detectionSummary?.phash
+      ? hammingHex(incomingHash, r.aiAnalysis.detectionSummary.phash)
+      : null,
+  }));
+  // Prefer visually-confirmed matches; fall back to nearest geo match.
+  const HASH_DUP_MAX_BITS = 10;
+  const confirmed = scored
+    .filter((s) => s.hashDist != null && s.hashDist <= HASH_DUP_MAX_BITS)
+    .sort((a, b) => (a.hashDist - b.hashDist) || (a.d - b.d))[0];
+  if (confirmed) {
+    const similarity = Number(Math.min(0.99, 0.99 - confirmed.hashDist / 64).toFixed(2));
+    return { isPotentialDuplicate: true, primaryReportId: confirmed.r.id, similarityScore: similarity, distanceMeters: confirmed.d, method: "dhash" };
+  }
+  const match = scored.slice().sort((a, b) => a.d - b.d)[0];
+  return {
+    isPotentialDuplicate: true,
+    primaryReportId: match.r.id,
+    similarityScore: Number(Math.min(0.72, 0.35 + (700 - match.d) / 1000).toFixed(2)),
+    distanceMeters: match.d,
+    method: "geo_time_category",
+  };
 }
 
-function buildDashboard(state) {
-  const reports = state.reports;
+// ---------------------------------------------------------------------------
+// Automatic SLA escalation sweep. High/critical complaints open > 12h, medium
+// > 24h and low > 48h are escalated automatically: flagged on the report,
+// citizens notified, admins alerted live. Throttled to one run per 5 minutes
+// and additionally triggered by the /api/cron/escalate cron endpoint.
+// ---------------------------------------------------------------------------
+let lastSweepAt = 0;
+let sweepInFlight = null;
+async function runEscalationSweep({ force = false } = {}) {
+  if (!force && Date.now() - lastSweepAt < 5 * 60 * 1000) return { skipped: true, escalated: 0 };
+  if (sweepInFlight) return sweepInFlight;
+  lastSweepAt = Date.now();
+  sweepInFlight = (async () => {
+    const stale = await store.getStaleOpenReports().catch(() => []);
+    let escalated = 0;
+    for (const report of stale) {
+      try {
+        const ageHours = Math.max(1, Math.round((Date.now() - new Date(report.createdAt).getTime()) / 3600000));
+        await store.updateReport(report.id, {
+          escalated: true,
+          escalatedAt: nowIso(),
+          statusTimeline: [...(report.statusTimeline || []), { status: "escalated", at: nowIso() }],
+        });
+        escalated++;
+        await store.createNotification({
+          userId: report.citizenId,
+          title: "Complaint auto-escalated",
+          body: `${report.id} has been pending for ~${ageHours}h and was escalated for priority action.`,
+          kind: "escalation",
+          reportId: report.id,
+        });
+        publish("complaint:escalated", { id: report.id, reason: "sla_breach", ageHours }, { roles: [...ADMIN_ROLES] });
+        publish("waste:updated", { id: report.id, escalated: true }, { roles: [...ADMIN_ROLES] });
+      } catch (err) {
+        console.warn(`[escalation] failed for ${report.id}:`, err?.message);
+      }
+    }
+    if (escalated > 0) {
+      console.log(`[escalation] auto-escalated ${escalated} SLA-breached complaint(s)`);
+      await store.createNotification({
+        userId: "user-admin",
+        title: "SLA escalation sweep",
+        body: `${escalated} overdue complaint(s) auto-escalated (high/critical >12h, medium >24h, low >48h).`,
+        kind: "escalation",
+      }).catch(() => {});
+    }
+    return { skipped: false, escalated };
+  })().finally(() => { sweepInFlight = null; });
+  return sweepInFlight;
+}
+
+function buildDashboard(state) {  const reports = state.reports;
   const open = reports.filter((r) => ![REPORT_STATUSES.RESOLVED, REPORT_STATUSES.REJECTED].includes(r.status));
   const critical = reports.filter((r) => r.priority?.level === "critical");
   const resolvedToday = reports.filter((r) => r.status === REPORT_STATUSES.RESOLVED && new Date(r.updatedAt).toDateString() === new Date().toDateString());
@@ -214,6 +299,17 @@ function allowRate(key, limit, windowMs) {
   return true;
 }
 
+function clientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length) return fwd.split(",")[0].trim();
+  if (Array.isArray(fwd) && fwd.length) return String(fwd[0]).trim();
+  return req.socket?.remoteAddress || "unknown";
+}
+
+if (process.env.NODE_ENV !== "test") {
+  console.log(`[AI] provider: ${getAIProvider().constructor?.name || "unknown"} | AI_PROVIDER=${process.env.AI_PROVIDER || "(default)"}`);
+}
+
 export async function handleApiRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
   const { pathname } = url;
@@ -221,6 +317,21 @@ export async function handleApiRequest(req, res) {
   try {
     if (pathname === "/api/health" && req.method === "GET") {
       return json(res, 200, { ok: true, mode: "neon-db", date: new Date().toISOString() });
+    }
+
+    // ---- Cron entrypoint (Vercel Cron sends GET with Bearer $CRON_SECRET) ----
+    if (pathname === "/api/cron/escalate" && (req.method === "GET" || req.method === "POST")) {
+      const secret = process.env.CRON_SECRET || "";
+      const provided = getBearerToken(req) || req.headers["x-cron-secret"] || "";
+      if (secret && provided !== secret) {
+        const auth = await requireRoles(req, res, ADMIN_ROLES);
+        if (!auth) return;
+      } else if (!secret) {
+        const auth = await requireRoles(req, res, ADMIN_ROLES);
+        if (!auth) return;
+      }
+      const result = await runEscalationSweep({ force: true });
+      return json(res, 200, { ok: true, ...result });
     }
 
     if (pathname === "/api/auth/me" && req.method === "GET") {
@@ -247,7 +358,7 @@ export async function handleApiRequest(req, res) {
       const role = ["citizen", "cleanup_worker"].includes(body.role) ? body.role : "citizen";
       if (!name || !email || !password) return json(res, 400, { error: { code: "VALIDATION", message: "Name, email, and password are required." } });
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: { code: "VALIDATION", message: "Please enter a valid email address." } });
-      if (password.length < 6) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "Password must be at least 6 characters." } });
+      if (password.length < 8) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "Password must be at least 8 characters." } });
       if (body.termsAccepted !== true) {
         return json(res, 400, { error: { code: "TERMS_REQUIRED", message: "You must accept the Terms of Service and Privacy Policy to create an account." } });
       }
@@ -269,9 +380,17 @@ export async function handleApiRequest(req, res) {
     }
 
     if (pathname === "/api/auth/login" && req.method === "POST") {
+      // Brute-force guard: 10 attempts / minute per IP and 5 per account / 15 min.
+      const ip = clientIp(req);
+      if (!allowRate(`login:ip:${ip}`, 10, 60 * 1000)) {
+        return json(res, 429, { error: { code: "RATE_LIMITED", message: "Too many sign-in attempts. Please wait a moment." } });
+      }
       const body = await readJson(req);
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
+      if (!allowRate(`login:email:${email}`, 5, 15 * 60 * 1000)) {
+        return json(res, 429, { error: { code: "RATE_LIMITED", message: "Too many sign-in attempts for this account. Try again in a few minutes." } });
+      }
       const user = await store.getUserByEmail(email);
       if (!user) return json(res, 401, { error: { code: "INVALID_CREDENTIAL", message: "Incorrect email or password." } });
       const pool = (await import("./db.js")).getPool();
@@ -439,7 +558,7 @@ export async function handleApiRequest(req, res) {
       const token = String(body.token || "").trim();
       const password = String(body.password || "");
       if (!token) return json(res, 400, { error: { code: "VALIDATION", message: "Reset token is missing or invalid." } });
-      if (password.length < 6) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "Password must be at least 6 characters." } });
+      if (password.length < 8) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "Password must be at least 8 characters." } });
       // Atomic consume: fails when the token is unknown, expired, or already used.
       let uid;
       try {
@@ -483,7 +602,7 @@ export async function handleApiRequest(req, res) {
       const currentPassword = String(body.currentPassword || "");
       const newPassword = String(body.newPassword || "");
       if (!currentPassword || !newPassword) return json(res, 400, { error: { code: "VALIDATION", message: "Current and new password are required." } });
-      if (newPassword.length < 6) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "New password must be at least 6 characters." } });
+      if (newPassword.length < 8) return json(res, 400, { error: { code: "WEAK_PASSWORD", message: "New password must be at least 8 characters." } });
       const pool = (await import("./db.js")).getPool();
       const accRes = await pool.query("SELECT password_hash, salt FROM users WHERE uid = $1", [auth.user.uid]);
       const acc = accRes.rows[0];
@@ -511,8 +630,10 @@ export async function handleApiRequest(req, res) {
       // Gemini gatekeeper pre-check: reject photos that clearly contain no waste
       // before the YOLO/volume/severity pipeline runs. Fails open on any error.
       let lowImageWarning = "";
+      let gateVerdict = null;
       try {
         const gate = await checkWasteImage({ image: body.image });
+        gateVerdict = gate;
         if (gate.checked && !gate.isWaste) {
           console.log(`[AI] Gate rejected non-waste image (${gate.confidence}): ${gate.reason}`);
           store.logInference({ userId: auth.user.uid, outcome: "gate_rejected", provider: "gemini_gatekeeper", reason: gate.reason || "" }).catch(() => {});
@@ -554,6 +675,33 @@ export async function handleApiRequest(req, res) {
         } catch (fallbackErr) {
           console.error("[AI] Fallback also failed:", fallbackErr.message);
           return json(res, 500, { error: { code: "AI_FAILED", message: "Analysis could not be completed. Please try again." } });
+        }
+      }
+      // Scene-aware category refinement: the CNN is a material classifier, but
+      // three problem-statement categories (drain_blockage, overflowing_bin,
+      // construction_debris) are scenes no material class can express. The
+      // gatekeeper's Gemini verdict recognises them for free on the same call;
+      // when it confidently sees one, override the label and recompute
+      // severity + dispatch with the same rule engine.
+      if (gateVerdict?.checked && gateVerdict?.isWaste && gateVerdict.scene) {
+        const scene = gateVerdict.scene;
+        analysis.detectionSummary = {
+          ...(analysis.detectionSummary || {}),
+          sceneDetection: { scene, confidence: gateVerdict.confidence || "medium", model: "gemini_gatekeeper" },
+        };
+        if (scene !== analysis.wasteType) {
+          console.log(`[AI] Scene override: ${analysis.wasteType} -> ${scene} (Gemini ${gateVerdict.confidence})`);
+          analysis.wasteType = scene;
+          try {
+            const { ruleBasedSeverity, recommendAction } = await import("./ai/onnxProvider.js");
+            const sev = ruleBasedSeverity(scene, analysis.estimatedVolume || "medium", Number(analysis.confidence) || 70);
+            analysis.severity = sev.severity;
+            analysis.dispatch = recommendAction(scene, analysis.estimatedVolume || "medium", sev.severity);
+            analysis.recommendation = `Assign ${analysis.dispatch.team} within ${analysis.dispatch.sla_hours} hours. ${analysis.dispatch.instructions}`;
+            if (sev.confidence) analysis.severityConfidence = sev.confidence;
+          } catch (sevErr) {
+            console.warn("[AI] scene severity recompute failed:", sevErr.message);
+          }
         }
       }
       const duplicate = await findDuplicateMatch({ location: body.location || null, aiAnalysis: analysis });
@@ -645,6 +793,11 @@ export async function handleApiRequest(req, res) {
       const beforeMedia = await saveDataUrlMedia(payload.image, `reports/${auth.user.uid}/${reportId}/before`);
       const videoMedia = await saveDataUrlMedia(payload.video, `reports/${auth.user.uid}/${reportId}/before-video`);
       const aiAnalysis = { wasteType: payload.aiResult.wasteType, confidence: Math.round(Number(payload.aiResult.confidence) || 0), estimatedVolume: payload.aiResult.estimatedVolume, estimatedVolumeRange: payload.aiResult.estimatedVolumeRange, severity: payload.aiResult.severity, potentialRisks: String(payload.aiResult.potentialRisk || "").split(",").map((s) => s.trim()).filter(Boolean), recommendation: payload.aiResult.recommendation };
+      // Persist the full AI verdict so recycling routing, hazard alerts and the
+      // gauge all work from stored data (not just the transient analyze response).
+      if (payload.aiResult.hazardFlag !== undefined) aiAnalysis.hazardFlag = Boolean(payload.aiResult.hazardFlag);
+      if (payload.aiResult.recyclableHeavy !== undefined) aiAnalysis.recyclableHeavy = Boolean(payload.aiResult.recyclableHeavy);
+      if (payload.aiResult.detectionSummary) aiAnalysis.detectionSummary = payload.aiResult.detectionSummary;
 
       let resolvedAddress = payload.location.address || "";
       if ((!resolvedAddress || resolvedAddress.startsWith("Detected location")) && payload.location.latitude && payload.location.longitude) {
@@ -708,6 +861,17 @@ export async function handleApiRequest(req, res) {
       const reportId = pathname.split("/").pop();
       const report = await store.getReportById(reportId);
       if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
+      // Ownership/RBAC scoping: citizens see only their own reports, workers
+      // only reports assigned to their team, staff everything.
+      const isStaff = ADMIN_ROLES.includes(auth.user.role);
+      const isOwner = report.citizenId === auth.user.uid;
+      let isAssignedWorker = false;
+      if (!isStaff && !isOwner && auth.user.role === ROLES.CLEANUP_WORKER) {
+        isAssignedWorker = (await getAssignedWorkerUids(report)).includes(auth.user.uid);
+      }
+      if (!isStaff && !isOwner && !isAssignedWorker) {
+        return json(res, 403, { error: { code: "FORBIDDEN", message: "You do not have access to this report." } });
+      }
       return json(res, 200, { report: formatReportForClient(report) });
     }
 
@@ -756,11 +920,20 @@ export async function handleApiRequest(req, res) {
       const nextStatus = body.status;
       const report = await store.getReportById(reportId);
       if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
-      const allowed = ADMIN_ROLES.includes(auth.user.role) || (auth.user.role === ROLES.CLEANUP_WORKER && report.assignedTeamId) || (auth.user.role === ROLES.CITIZEN && [REPORT_STATUSES.REOPENED].includes(nextStatus));
+      let allowed = ADMIN_ROLES.includes(auth.user.role) || (auth.user.role === ROLES.CITIZEN && [REPORT_STATUSES.REOPENED].includes(nextStatus));
+      if (!allowed && auth.user.role === ROLES.CLEANUP_WORKER) {
+        // Workers may only transition reports actually assigned to their team.
+        if (report.assignedTeamId) {
+          allowed = (await getAssignedWorkerUids(report)).includes(auth.user.uid);
+        }
+      }
       if (!allowed) return json(res, 403, { error: { code: "FORBIDDEN", message: "Not allowed." } });
       if (!validateStatusTransition(report.status, nextStatus)) return json(res, 400, { error: { code: "INVALID_TRANSITION", message: `Cannot transition from ${report.status} to ${nextStatus}.` } });
       const timeline = [...(report.statusTimeline || []), { status: nextStatus, at: nowIso() }];
       const updates = { status: nextStatus, statusTimeline: timeline };
+      // Persist the Gemini cleanup verification verdict alongside the report
+      // so admins see the advisory without re-running it.
+      if (body.aiVerification) updates.aiAfterAnalysis = body.aiVerification;
       if (body.afterImage) {
         const afterMedia = await saveDataUrlMedia(body.afterImage, `cleanup/${reportId}/after`);
         updates["afterMedia.imageUrl"] = afterMedia.url;
@@ -904,6 +1077,7 @@ export async function handleApiRequest(req, res) {
     if (pathname === "/api/admin/dashboard" && req.method === "GET") {
       const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
+      runEscalationSweep().catch(() => {});
       const [state, peopleStats, categoryMix, aiHealth] = await Promise.all([
         store.getState(),
         store.getPeopleStats().catch(() => null),
@@ -996,6 +1170,7 @@ export async function handleApiRequest(req, res) {
     if (pathname === "/api/admin/complaints" && req.method === "GET") {
       const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
+      runEscalationSweep().catch(() => {});
       const filters = {
         status: url.searchParams.get("status") || undefined,
         severity: url.searchParams.get("severity") || undefined,
@@ -1043,8 +1218,54 @@ export async function handleApiRequest(req, res) {
       return json(res, 200, { report: formatReportForClient(updated) });
     }
 
-    const assignMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/assign$/);
-    if (assignMatch && req.method === "PATCH") {
+    // ---- Fleet-aware dispatch suggestions: ranks real crews by ward fit,
+    // availability, vehicle capability vs volume, live workload and proximity.
+    if (pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/dispatch-suggest$/) && req.method === "GET") {
+      const auth = await requireRoles(req, res, ADMIN_ROLES);
+      if (!auth) return;
+      const reportId = decodeURIComponent(pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/dispatch-suggest$/)[1]);
+      const report = await store.getReportById(reportId);
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Complaint not found." } });
+      const teams = await store.getTeamsWithLoad();
+      const wasteType = report.aiAnalysis?.wasteType || "";
+      const volume = report.aiAnalysis?.estimatedVolume || "small";
+      const needsHeavyVehicle = ["large", "full"].includes(volume);
+      const wantsRecycler = Boolean(report.aiAnalysis?.recyclableHeavy) || wasteType === "plastic_waste" || wasteType === "e_waste";
+      const wantsDrain = wasteType === "drain_blockage";
+      const wantsHazmat = Boolean(report.aiAnalysis?.hazardFlag) || ["hazardous_waste", "e_waste"].includes(wasteType);
+      const scored = teams.map((team) => {
+        let score = 50;
+        const reasons = [];
+        if (report.location?.wardId && (team.wardIds || []).includes(report.location.wardId)) {
+          score += 20; reasons.push("Covers this ward");
+        }
+        if (team.status === "available") { score += 15; reasons.push("Available now"); }
+        else if ((team.activeTasks || 0) <= 1) { score += 5; reasons.push("Light workload"); }
+        score -= Math.min(20, (team.activeTasks || 0) * 5);
+        if ((team.activeTasks || 0) > 0) reasons.push(`${team.activeTasks} active task(s)`);
+        const vehicleType = String(team.vehicleType || "").toLowerCase();
+        const capacity = String(team.vehicleCapacity || "").toLowerCase();
+        if (needsHeavyVehicle && /truck|tipper|lorry/.test(vehicleType)) { score += 15; reasons.push("Heavy vehicle for large volume"); }
+        else if (needsHeavyVehicle && /large|heavy/.test(capacity)) { score += 10; }
+        else if (needsHeavyVehicle) { score -= 8; reasons.push("Small vehicle vs volume"); }
+        if (wantsRecycler && /recycl|scrap/.test(`${vehicleType} ${team.name}`.toLowerCase())) { score += 12; reasons.push("Recycling-capable crew"); }
+        if (wantsDrain && /drain/.test(team.name.toLowerCase())) { score += 18; reasons.push("Specialised drain unit"); }
+        if (wantsHazmat && /hazmat|hazard/.test(team.name.toLowerCase())) { score += 18; reasons.push("Hazmat-trained team"); }
+        try {
+          if (report.location?.latitude && team.currentLocation?.latitude && team.currentLocation.latitude !== 0) {
+            const km = haversineMeters(report.location, team.currentLocation) / 1000;
+            score += Math.max(0, 15 - km * 1.5);
+            if (km < 3) reasons.push(`Only ${km.toFixed(1)} km away`);
+            else reasons.push(`${km.toFixed(1)} km away`);
+          }
+        } catch {}
+        return { team: formatTeamForClient(team), score: Math.round(score), reasons };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      return json(res, 200, { reportId, suggestions: scored.slice(0, 3) });
+    }
+
+    const assignMatch = pathname.match(/^\/api\/admin\/complaints\/([^/]+)\/assign$/);    if (assignMatch && req.method === "PATCH") {
       const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
       const reportId = decodeURIComponent(assignMatch[1]);
@@ -1269,7 +1490,16 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       const uid = pathname.split("/").pop();
       const body = await readJson(req);
       const updates = {};
-      if (body.role) updates.role = body.role;
+      // Privilege hygiene: only super_admin may grant/modify privileged roles.
+      // Regular admins are limited to non-privileged roles.
+      if (body.role) {
+        const PRIVILEGED = ["admin", "super_admin", "ward_officer", "sanitation_supervisor"];
+        const target = String(body.role);
+        if (PRIVILEGED.includes(target) && auth.user.role !== "super_admin") {
+          return json(res, 403, { error: { code: "FORBIDDEN", message: "Only a super admin can grant privileged roles." } });
+        }
+        updates.role = target;
+      }
       if (body.isActive !== undefined) updates.is_active = body.isActive;
       if (body.wardId) updates.ward_id = body.wardId;
       const updated = await store.updateUserProfile(uid, updates);
@@ -1307,6 +1537,7 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
     if (pathname === "/api/admin/analytics" && req.method === "GET") {
       const auth = await requireRoles(req, res, ADMIN_ROLES);
       if (!auth) return;
+      runEscalationSweep().catch(() => {});
       const [analytics, aiHealth, peopleStats, categoryMix] = await Promise.all([
         store.getAnalytics(),
         store.getInferenceStats().catch(() => null),
@@ -1383,6 +1614,12 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       if (!auth) return;
       const body = await readJson(req);
       const reportId = body.reportId;
+      const report = reportId ? await store.getReportById(String(reportId)) : null;
+      if (!report) return json(res, 404, { error: { code: "NOT_FOUND", message: "Report not found." } });
+      // Authorization: notes only on reports assigned to the worker's team.
+      if (!(await getAssignedWorkerUids(report)).includes(auth.user.uid)) {
+        return json(res, 403, { error: { code: "FORBIDDEN", message: "This report is not assigned to you." } });
+      }
       const updates = {};
       if (body.workerNotes !== undefined) updates.workerNotes = body.workerNotes;
       if (body.actualVolume !== undefined) updates.actualVolume = body.actualVolume;

@@ -111,7 +111,7 @@ export async function checkWasteImage({ image }) {
     { text: "Photo to validate:" },
     dataUrlToPart(image),
     {
-      text: 'Look at this image carefully. Does it show waste, garbage, litter, illegal dumping, an overflowing bin, construction debris, or any form of trash/rubbish that would need civic cleanup? A photo counts as valid even if the waste is only partially visible or far away, as long as some trash is genuinely present. People, pets, food photos, clean streets, landscapes, buildings, vehicles without trash are NOT valid. Answer strictly in this JSON format only, no extra text: {"is_waste": true/false, "reason": "one short sentence explaining what you actually see in the image", "confidence": "high/medium/low"}',
+      text: 'Look at this image carefully. Does it show waste, garbage, litter, illegal dumping, an overflowing bin, construction debris, or any form of trash/rubbish that would need civic cleanup? A photo counts as valid even if the waste is only partially visible or far away, as long as some trash is genuinely present. People, pets, food photos, clean streets, landscapes, buildings, vehicles without trash are NOT valid. Also identify which special municipal scene best matches the image: "drain_blockage" (a clogged/blocked storm drain or gutter packed with waste), "overflowing_bin" (a dustbin overflowing beyond its rim), "construction_debris" (rubble, sand, bricks, construction material dumped), or "none". Answer strictly in this JSON format only, no extra text: {"is_waste": true/false, "reason": "one short sentence explaining what you actually see in the image", "confidence": "high/medium/low", "scene": "none|drain_blockage|overflowing_bin|construction_debris"}',
     },
   ];
 
@@ -119,11 +119,14 @@ export async function checkWasteImage({ image }) {
     const text = await callGemini(parts);
     const parsed = parseJsonLoose(text);
     const confidence = ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "medium";
+    const allowedScenes = ["none", "drain_blockage", "overflowing_bin", "construction_debris"];
+    const scene = allowedScenes.includes(parsed.scene) ? parsed.scene : "none";
     const verdict = {
       checked: true,
       isWaste: Boolean(parsed.is_waste),
       confidence,
       reason: String(parsed.reason || "").slice(0, 300),
+      ...(scene !== "none" && Boolean(parsed.is_waste) ? { scene } : {}),
       model: appConfig.geminiModel,
     };
     verdictCache.set(hash, { expires: Date.now() + CACHE_TTL_MS, verdict });

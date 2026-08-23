@@ -453,7 +453,9 @@ const HIGH_RISK_TYPES = ["construction_debris", "drain_blockage"];
 const VOLUME_WEIGHTS = { small: 1, medium: 2, large: 3, very_large: 4 };
 
 // Port of models/severity.py _rule_based_severity().
-function ruleBasedSeverity(wasteType, volumeCategory, confidence,
+// Exported for the router: scene overrides (Gemini drain/bin/debris verdict)
+// recompute severity + dispatch through the exact same rule engine.
+export function ruleBasedSeverity(wasteType, volumeCategory, confidence,
   reportFrequency = 1, ageHours = 0, locationSensitivity = 0.3) {
   let score = 0;
   if (HAZARDOUS_TYPES.includes(wasteType)) score += 35;
@@ -479,7 +481,7 @@ function ruleBasedSeverity(wasteType, volumeCategory, confidence,
 }
 
 // Port of models/dispatch.py recommend_action().
-function recommendAction(wasteType, volumeCategory, severity) {
+export function recommendAction(wasteType, volumeCategory, severity) {
   if (wasteType === "hazardous_waste" || severity === "critical") {
     return {
       team: "special_hazmat_team", vehicle: "hazmat_van", sla_hours: 2,
@@ -605,6 +607,9 @@ export class OnnxAIProvider {
     // heuristic-only (no classifier) results for human review.
     const needsReview = !cls.checked || confidence < 0.35;
 
+    const { computePHash } = await import("../utils.js");
+    const phash = await computePHash(image.buffer);
+
     const processingTime = (Date.now() - started) / 1000;
     console.log(`[AI:onnx] ${category} (${(confidence * 100).toFixed(1)}%) vol=${volumeCategory} ` +
       `sev=${severityResult.severity} in ${processingTime.toFixed(2)}s`);
@@ -633,6 +638,7 @@ export class OnnxAIProvider {
         topConfidence: Math.round(confidence * 1000) / 10,
         coveragePercent,
         recyclableHeavy: wasteType === "plastic_waste",
+        ...(phash ? { phash } : {}),
       },
       aiVerified: true,
       processingTime: Math.round(processingTime * 100) / 100,
@@ -640,7 +646,7 @@ export class OnnxAIProvider {
         detector: detectorMethod,
         classifier: Boolean(cls.checked),
         volume: "contour_heuristic",
-        duplicate: "phash",
+        duplicate: "dhash+geo",
         severity: "rule_based",
         dispatch: "rules",
       },

@@ -40,6 +40,7 @@ function rowToReport(row) {
     actualVolume: row.actual_volume || "",
     escalated: Boolean(row.escalated),
     escalatedAt: row.escalated_at || null,
+    duplicateGroupDismissed: Boolean(row.duplicate_group_dismissed),
     feedbackRating: row.feedback_rating ?? null,
     feedbackComment: row.feedback_comment || "",
     feedbackAt: row.feedback_at || null,
@@ -156,8 +157,12 @@ export const store = {
   },
 
   async getSession(token) {
-    const res = await query("SELECT * FROM sessions WHERE token = $1", [token]);
-    if (!res.rows[0]) return null;
+    const res = await query("SELECT * FROM sessions WHERE token = $1 AND expires_at > NOW()", [token]);
+    if (!res.rows[0]) {
+      // Token either unknown or expired — drop expired rows lazily.
+      await query("DELETE FROM sessions WHERE token = $1 AND expires_at <= NOW()").catch(() => {});
+      return null;
+    }
     const row = res.rows[0];
     const user = await this.getUserByUid(row.uid);
     if (!user) return null;
@@ -170,7 +175,7 @@ export const store = {
   },
 
   async cleanExpiredSessions() {
-    await query("DELETE FROM sessions WHERE created_at < NOW() - INTERVAL '30 days'");
+    await query("DELETE FROM sessions WHERE expires_at < NOW()");
   },
 
   async getReportsForUser(uid, role) {
@@ -507,10 +512,29 @@ export const store = {
     return res.rows.map(rowToReport);
   },
 
+  // SLA policy: high/critical complaints must be actioned within 12h,
+  // medium within 24h, low within 48h. Returns open, never-escalated
+  // complaints that have breached their window.
+  async getStaleOpenReports() {
+    const res = await query(`
+      SELECT * FROM reports
+      WHERE status NOT IN ('resolved', 'rejected', 'duplicate')
+        AND (escalated IS NOT TRUE)
+        AND (
+          (priority_level IN ('high', 'critical') AND created_at < NOW() - INTERVAL '12 hours')
+          OR (priority_level = 'medium' AND created_at < NOW() - INTERVAL '24 hours')
+          OR (priority_level NOT IN ('high', 'critical', 'medium') AND created_at < NOW() - INTERVAL '48 hours')
+        )
+      ORDER BY priority_score DESC, created_at ASC
+      LIMIT 50
+    `);
+    return res.rows.map(rowToReport);
+  },
+
   async getDuplicateGroups() {
     const res = await query(
       `SELECT duplicate_primary_report_id AS group_id, array_agg(id) AS report_ids, COUNT(*) AS member_count, MAX(duplicate_similarity_score) AS max_similarity
-       FROM reports WHERE duplicate_is_potential = true AND duplicate_primary_report_id != ''
+       FROM reports WHERE duplicate_is_potential = true AND duplicate_primary_report_id != '' AND duplicate_group_dismissed = false
        GROUP BY duplicate_primary_report_id HAVING COUNT(*) > 1 ORDER BY max_similarity DESC`
     );
     const groups = [];
@@ -993,17 +1017,21 @@ export const store = {
     const setClauses = [];
     const values = [];
     let i = 1;
+    // Strict whitelist — never interpolate client-controlled column names.
     const fieldMap = {
       workerNotes: "worker_notes",
       actualVolume: "actual_volume",
       rejectionReason: "rejection_reason",
+      aiAfterAnalysis: "ai_after_analysis",
     };
     for (const [key, val] of Object.entries(updates)) {
-      const col = fieldMap[key] || key;
+      const col = fieldMap[key];
+      if (!col) continue;
       setClauses.push(`${col} = $${i}`);
-      values.push(val);
+      values.push(typeof val === "object" ? JSON.stringify(val) : val);
       i++;
     }
+    if (!setClauses.length) return this.getReportById(reportId);
     setClauses.push("updated_at = NOW()");
     values.push(reportId);
     await query(`UPDATE reports SET ${setClauses.join(", ")} WHERE id = $${i}`, values);

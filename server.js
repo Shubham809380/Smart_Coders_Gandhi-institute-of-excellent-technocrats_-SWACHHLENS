@@ -47,9 +47,30 @@ function sendFile(res, filePath) {
 function startServer(portToUse) {
   const server = createServer(async (req, res) => {
     try {
+      // Baseline security headers on every response.
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "DENY");
+      res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+      res.setHeader("Permissions-Policy", "geolocation=(self), camera=(self), microphone=()");
       const urlPath = req.url?.split("?")[0] || "/";
       if (urlPath.startsWith("/api/")) {
         if (urlPath === "/api/events") {
+          // SSE requires a valid session token (query param works because
+          // EventSource cannot set headers).
+          try {
+            const url = new URL(req.url, "http://localhost");
+            const token = url.searchParams.get("token") ||
+              (req.headers.authorization || "").replace(/^Bearer /, "");
+            if (!token || !(await store.getSession(token))) {
+              res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+              res.end(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "Sign in required." } }));
+              return;
+            }
+          } catch {
+            res.writeHead(401);
+            res.end();
+            return;
+          }
           subscribeEvents(req, res);
           return;
         }

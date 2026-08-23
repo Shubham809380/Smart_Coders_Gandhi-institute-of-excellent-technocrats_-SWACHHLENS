@@ -119,7 +119,8 @@ function unwatchReport(reportId) {
 function getSource() {
   if (sharedSource) return sharedSource;
   try {
-    sharedSource = new EventSource("/api/events");
+    const token = readToken();
+    sharedSource = new EventSource(token ? `/api/events?token=${encodeURIComponent(token)}` : "/api/events");
   } catch {
     return null;
   }

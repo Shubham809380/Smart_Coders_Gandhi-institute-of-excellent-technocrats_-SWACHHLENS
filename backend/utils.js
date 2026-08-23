@@ -366,3 +366,49 @@ export async function serveStoredMedia(req, res, pathname) {
 export function cleanObject(value) {
   return JSON.parse(JSON.stringify(value));
 }
+
+/**
+ * 64-bit difference hash (dHash) of an image, returned as a 16-char hex string.
+ * Horizontal-gradient hash over a 9x8 grayscale resize: robust to rescale,
+ * compression and minor colour shifts, which is exactly what duplicate
+ * waste photos of the same pile look like. Hamming distance <= 10 of 64
+ * bits is treated as "same scene" by findDuplicateMatch().
+ */
+export async function computePHash(buffer) {
+  try {
+    const sharpModule = await import("sharp");
+    const sharp = sharpModule.default || sharpModule;
+    const { data } = await sharp(buffer)
+      .resize(9, 8, { fit: "fill" })
+      .grayscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let bits = 0n;
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const left = data[y * 9 + x];
+        const right = data[y * 9 + x + 1];
+        if (left > right) bits |= 1n << BigInt(y * 8 + x);
+      }
+    }
+    return bits.toString(16).padStart(16, "0");
+  } catch (err) {
+    console.warn("[phash] dHash computation failed:", err?.message);
+    return "";
+  }
+}
+
+/** Hamming distance between two hex-encoded hashes (0-64). */
+export function hammingHex(a, b) {
+  if (!a || !b || a.length !== b.length) return 64;
+  try {
+    let dist = 0;
+    for (let i = 0; i < a.length; i++) {
+      let x = parseInt(a[i], 16) ^ parseInt(b[i], 16);
+      while (x) { dist += x & 1; x >>= 1; }
+    }
+    return dist;
+  } catch {
+    return 64;
+  }
+}
