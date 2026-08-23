@@ -123,7 +123,7 @@ export default function AIPriorityQueue() {
                   </div>
 
                   <div className="col-span-full lg:col-span-2 flex items-center justify-start lg:justify-end">
-                    <button className="bg-primary text-white px-4 py-2 rounded-xl text-[13px] font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.96]" onClick={(e) => { e.stopPropagation(); setSelected(item); }}>
+                    <button className="bg-primary text-white px-4 py-2 rounded-xl text-[13px] font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.96]" onClick={(e) => { e.stopPropagation(); selectReport(item); }}>
                       Dispatch<span className="material-symbols-outlined text-[16px]">arrow_forward</span>
                     </button>
                   </div>
@@ -176,10 +176,36 @@ export default function AIPriorityQueue() {
               {selected && (
                 <div className="p-5 border-t border-surface-container-high">
                   <h3 className="text-[11px] font-extrabold text-cyan-700 uppercase tracking-wider mb-2 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[14px]">psychology</span> Available Teams
+                    <span className="material-symbols-outlined text-[14px]">psychology</span> AI-Matched Teams
                   </h3>
-                  <div className="flex flex-col gap-2 mb-3 max-h-36 overflow-y-auto">
-                    {teams.filter(t => t.status === 'available').map(team => (
+                  <div className="flex flex-col gap-2 mb-3 max-h-52 overflow-y-auto">
+                    {suggestions.length > 0 && suggestions.map((sug, idx) => (
+                      <div key={sug.team.id} className={`p-3 rounded-xl border ${idx === 0 ? 'bg-cyan-50/60 border-cyan-200' : 'bg-surface-container'}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-[#00873a]/10 flex items-center justify-center shrink-0 relative">
+                              <span className="material-symbols-outlined text-[#006b2c] text-[16px]">group</span>
+                              {idx === 0 && <span className="absolute -top-1.5 -right-1.5 px-1 py-px rounded-md bg-cyan-600 text-white text-[8px] font-extrabold">AI</span>}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[13px] font-bold text-on-surface block truncate">{sug.team.name}</span>
+                              <span className="text-[10px] font-semibold text-on-surface-variant">Match {Math.min(100, sug.score)}% · {sug.team.vehicle || 'no vehicle'} · {sug.team.activeTasks ?? 0} active</span>
+                            </div>
+                          </div>
+                          <button onClick={() => handleDispatch(selected.id, sug.team.id)} disabled={dispatching} className="bg-primary text-white px-3 py-1.5 rounded-lg text-[12px] font-bold shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0">
+                            {dispatching ? '...' : 'Dispatch'}
+                          </button>
+                        </div>
+                        {idx === 0 && sug.reasons?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {sug.reasons.slice(0, 4).map((reason, i) => (
+                              <span key={i} className="px-1.5 py-0.5 rounded bg-cyan-100/70 text-cyan-800 text-[9px] font-bold">{reason}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {suggestions.length === 0 && teams.filter(t => t.status === 'available').map(team => (
                       <div key={team.id} className="flex items-center justify-between p-3 bg-surface-container rounded-xl">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-lg bg-[#00873a]/10 flex items-center justify-center">
@@ -196,8 +222,13 @@ export default function AIPriorityQueue() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={() => { if (teams.filter(t => t.status === 'available').length > 0) handleDispatch(selected.id, teams.find(t => t.status === 'available')?.id); }} disabled={dispatching || teams.filter(t => t.status === 'available').length === 0} className="w-full bg-primary text-white py-3 rounded-2xl text-[14px] font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]" style={{ boxShadow: "0 6px 16px -4px rgba(0,107,44,0.3)" }}>
-                    <span className="material-symbols-outlined text-[18px]">send</span> {dispatching ? 'Dispatching...' : 'Auto-Dispatch Best Match'}
+                  <button
+                    onClick={autoDispatchBestMatch}
+                    disabled={dispatching || (suggestions.length === 0 && teams.filter(t => t.status === 'available').length === 0)}
+                    className="w-full bg-primary text-white py-3 rounded-2xl text-[14px] font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]"
+                    style={{ boxShadow: "0 6px 16px -4px rgba(0,107,44,0.3)" }}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">auto_awesome</span> {dispatching ? 'Dispatching...' : 'Auto-Dispatch Best Match'}
                   </button>
                 </div>
               )}

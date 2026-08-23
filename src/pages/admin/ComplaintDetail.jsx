@@ -133,11 +133,13 @@ export default function ComplaintDetail() {
 
   useEffect(() => { setLoading(true); load(); }, [load]);
 
-  useLive((evt, payload) => {
-    if ((evt === "waste:updated" || evt === "waste:status:update") && payload?.id === reportId) {
-      setReport(payload);
+  useLive((_evt, payload) => {
+    // Event payloads are thin ({id, status}); never overwrite the full
+    // report object with them — refetch instead.
+    if ((payload?.id === reportId) || payload?.mergedGroup === reportId) {
+      load();
     }
-  }, ["waste:updated", "waste:status:update"], { pollMs: 45000, poll: load });
+  }, ["waste:updated", "waste:status:update", "complaint:escalated"], { pollMs: 45000, poll: load });
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3500); };
 
