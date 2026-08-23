@@ -36,6 +36,7 @@ const RecyclingRouting = lazy(() => import("./pages/admin/RecyclingRouting"));
 const Analytics = lazy(() => import("./pages/admin/Analytics"));
 const AlertsCenter = lazy(() => import("./pages/admin/AlertsCenter"));
 const UsersManagement = lazy(() => import("./pages/admin/UsersManagement"));
+const SettingsPage = lazy(() => import("./pages/admin/SettingsPage"));
 
 const WorkerTasks = lazy(() => import("./pages/worker/WorkerTasks"));
 const TaskDetail = lazy(() => import("./pages/worker/TaskDetail"));
@@ -236,6 +237,9 @@ export default function App() {
           <Route path="/admin/recycling" element={<AdminRoute><RecyclingRouting /></AdminRoute>} />
           <Route path="/admin/analytics" element={<AdminRoute><Analytics /></AdminRoute>} />
           <Route path="/admin/alerts" element={<AdminRoute><AlertsCenter /></AdminRoute>} />
+          <Route path="/admin/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
+          {/* Convenience alias — /settings lands on the admin Settings page */}
+          <Route path="/settings" element={<Navigate to="/admin/settings" replace />} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/login" replace />} />

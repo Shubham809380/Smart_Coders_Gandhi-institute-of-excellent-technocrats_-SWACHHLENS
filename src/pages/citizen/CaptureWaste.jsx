@@ -169,18 +169,27 @@ export default function CaptureWaste() {
 
   // Pulls one representative frame out of a clip — the AI pipeline is
   // image-based, so this poster does the analysis while the clip is attached.
-  const extractVideoFrame = (videoDataUrl) => new Promise((resolve, reject) => {
+  const extractVideoFrame = (videoDataUrl) => new Promise((resolve) => {
     const el = document.createElement('video');
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(guard);
+      el.onloadedmetadata = null; el.onseeked = null; el.onerror = null; el.src = '';
+      resolve(value);
+    };
+    // Never leave the picker hanging if the browser refuses to decode/seek.
+    const guard = setTimeout(() => done(null), 8000);
     el.preload = 'metadata';
     el.muted = true;
     el.playsInline = true;
     el.src = videoDataUrl;
-    const cleanup = () => { el.onloadedmetadata = null; el.onseeked = null; el.onerror = null; el.src = ''; };
     el.onloadedmetadata = () => {
       try {
         el.currentTime = Math.min(1, Math.max(0.1, (el.duration || 1) / 2));
       } catch {
-        resolve(null);
+        done(null);
       }
     };
     el.onseeked = () => {
@@ -188,7 +197,7 @@ export default function CaptureWaste() {
         const maxDim = 1024;
         let w = el.videoWidth;
         let h = el.videoHeight;
-        if (!w || !h) { cleanup(); resolve(null); return; }
+        if (!w || !h) { done(null); return; }
         if (w > maxDim || h > maxDim) {
           const ratio = Math.min(maxDim / w, maxDim / h);
           w = Math.round(w * ratio);
@@ -198,14 +207,12 @@ export default function CaptureWaste() {
         canvas.width = w;
         canvas.height = h;
         canvas.getContext('2d').drawImage(el, 0, 0, w, h);
-        cleanup();
-        resolve(canvas.toDataURL('image/jpeg', 0.75));
+        done(canvas.toDataURL('image/jpeg', 0.75));
       } catch {
-        cleanup();
-        resolve(null);
+        done(null);
       }
     };
-    el.onerror = () => { cleanup(); reject(new Error('This video format is not supported. Please use an MP4 clip.')); };
+    el.onerror = () => done(null);
   });
 
   const handleGallerySelect = async (e) => {
