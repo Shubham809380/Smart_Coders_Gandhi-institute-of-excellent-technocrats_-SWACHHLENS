@@ -8,10 +8,8 @@ const SplashScreen = () => {
   const [phase, setPhase] = useState('logo');
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('brand'), 1200);
-    const t2 = setTimeout(() => setPhase('tagline'), 2400);
-    const t3 = setTimeout(() => setPhase('loader'), 3200);
-    const t4 = setTimeout(() => navigate('/permissions'), 5000);
+    const t1 = setTimeout(() => setPhase('brand'), 900);
+    const t2 = setTimeout(() => navigate('/permissions'), 2600);
 
     const handleKey = (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -23,8 +21,6 @@ const SplashScreen = () => {
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
       window.removeEventListener('keydown', handleKey);
     };
   }, [navigate]);
@@ -62,34 +58,17 @@ const SplashScreen = () => {
         </div>
 
         {/* Brand name */}
-        <div className={`splash-brand ${phase === 'brand' || phase === 'tagline' || phase === 'loader' ? 'visible' : ''}`}>
+        <div className={`splash-brand ${phase === 'brand' ? 'visible' : ''}`}>
           <h1 className="splash-brand-text">
             <span className="splash-brand-green">Swachh</span>
             <span className="splash-brand-blue">Lens</span>
           </h1>
         </div>
 
-        {/* Tagline */}
-        <div className={`splash-tagline ${phase === 'tagline' || phase === 'loader' ? 'visible' : ''}`}>
-          <p>AI-Powered Waste Reporting</p>
-        </div>
-
-        {/* Tagline chips */}
-        <div className={`splash-chips ${phase === 'tagline' || phase === 'loader' ? 'visible' : ''}`}>
-          <span className="splash-chip">📸 Snap</span>
-          <span className="splash-chip">🤖 Analyze</span>
-          <span className="splash-chip">✅ Report</span>
-        </div>
-
         {/* Loading indicator */}
-        <div className={`splash-loader ${phase === 'loader' ? 'visible' : ''}`}>
+        <div className="splash-loader visible">
           <div className="splash-loader-bar" />
         </div>
-      </div>
-
-      {/* Skip */}
-      <div className="splash-skip" onClick={() => navigate('/permissions')}>
-        SKIP ›
       </div>
     </div>
   );
