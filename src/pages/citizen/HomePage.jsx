@@ -158,8 +158,18 @@ export default function HomePage() {
     r.priority?.level === "critical" || r.priority?.level === "high"
   ).length;
 
-  const h = new Date().getHours();
-  const greeting = h < 12 ? t("greetingMorning") : h < 17 ? t("greetingAfternoon") : t("greetingEvening");
+  // Time-slot greeting from the device clock: 5–12 morning, 12–17 afternoon,
+  // 17–21 evening, otherwise night. Ticks every minute so it updates live.
+  const [h, setHour] = useState(() => new Date().getHours());
+  useEffect(() => {
+    const id = setInterval(() => setHour(new Date().getHours()), 60000);
+    return () => clearInterval(id);
+  }, []);
+  const greeting =
+    h >= 5 && h < 12 ? t("greetingMorning") :
+    h >= 12 && h < 17 ? t("greetingAfternoon") :
+    h >= 17 && h < 21 ? t("greetingEvening") :
+    t("greetingNight");
   const userName = currentUser?.name?.split(" ")[0] || "there";
 
   const recentReports = reports.slice(0, 5);
@@ -203,7 +213,7 @@ export default function HomePage() {
                   {greeting}
                 </h1>
                 <span className="text-[22px]" role="img" aria-label="wave">
-                  {(h < 12) ? "\u{1F31E}" : (h < 17) ? "\u{2600}\u{FE0F}" : "\u{1F319}"}
+                  {(h >= 5 && h < 12) ? "\u{1F31E}" : (h >= 12 && h < 17) ? "\u{2600}\u{FE0F}" : (h >= 17 && h < 21) ? "\u{1F305}" : "\u{1F319}"}
                 </span>
               </div>
               <p className="text-[13px] text-on-surface-variant font-medium">
