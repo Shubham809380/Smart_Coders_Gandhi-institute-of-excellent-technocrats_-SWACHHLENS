@@ -8,6 +8,7 @@ import logo from "./logo.svg";
 const SplashScreen = lazy(() => import("./pages/SplashScreen"));
 const PermissionFlow = lazy(() => import("./pages/PermissionFlow"));
 const LoginPage = lazy(() => import("./pages/auth/LoginPage"));
+const AdminLoginPage = lazy(() => import("./pages/auth/AdminLoginPage"));
 const SignUpPage = lazy(() => import("./pages/auth/SignUpPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage"));
@@ -45,6 +46,16 @@ const WorkerHistory = lazy(() => import("./pages/worker/WorkerHistory"));
 function ComplaintDetailWrapper() {
   const { reportId } = useParams();
   return <ComplaintDetail reportId={reportId} />;
+}
+
+// Admin routes live behind a dedicated login-only portal at /admin/login —
+// no signup, no Google. Unauthenticated visitors land there instead of /login.
+function AdminRoute({ children }) {
+  return (
+    <ProtectedRoute allowedRoles={ADMIN_ROLES} loginPath="/admin/login">
+      {children}
+    </ProtectedRoute>
+  );
 }
 
 function LoadingFallback() {
@@ -127,6 +138,7 @@ export default function App() {
           <Route path="/" element={<SplashScreen />} />
           <Route path="/permissions" element={<PermissionFlow />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/signup" element={<SignUpPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
@@ -213,71 +225,23 @@ export default function App() {
           } />
 
           {/* Admin Routes */}
-          <Route path="/admin" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/dashboard" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/map" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <LiveMap />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/queue" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <PriorityQueue />
-            </ProtectedRoute>
-          } />
+          <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+          <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+          <Route path="/admin/map" element={<AdminRoute><LiveMap /></AdminRoute>} />
+          <Route path="/admin/queue" element={<AdminRoute><PriorityQueue /></AdminRoute>} />
           {/* Legacy routes → consolidated screens */}
           <Route path="/admin/ai-priority-queue" element={<Navigate to="/admin/queue" replace />} />
           <Route path="/admin/smart-dispatch" element={<Navigate to="/admin/queue" replace />} />
           <Route path="/admin/complaints" element={<Navigate to="/admin/queue" replace />} />
           <Route path="/admin/workers" element={<Navigate to="/admin/teams" replace />} />
-          <Route path="/admin/complaints/:reportId" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <ComplaintDetailWrapper />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/duplicates" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <DuplicateReview />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/verification" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <VerificationQueue />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/teams" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <TeamsFleet />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/users" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <UsersManagement />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/recycling" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <RecyclingRouting />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/analytics" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <Analytics />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/alerts" element={
-            <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-              <AlertsCenter />
-            </ProtectedRoute>
-          } />
+          <Route path="/admin/complaints/:reportId" element={<AdminRoute><ComplaintDetailWrapper /></AdminRoute>} />
+          <Route path="/admin/duplicates" element={<AdminRoute><DuplicateReview /></AdminRoute>} />
+          <Route path="/admin/verification" element={<AdminRoute><VerificationQueue /></AdminRoute>} />
+          <Route path="/admin/teams" element={<AdminRoute><TeamsFleet /></AdminRoute>} />
+          <Route path="/admin/users" element={<AdminRoute><UsersManagement /></AdminRoute>} />
+          <Route path="/admin/recycling" element={<AdminRoute><RecyclingRouting /></AdminRoute>} />
+          <Route path="/admin/analytics" element={<AdminRoute><Analytics /></AdminRoute>} />
+          <Route path="/admin/alerts" element={<AdminRoute><AlertsCenter /></AdminRoute>} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/login" replace />} />

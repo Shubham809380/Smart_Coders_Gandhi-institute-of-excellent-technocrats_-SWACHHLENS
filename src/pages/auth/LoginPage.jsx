@@ -149,7 +149,7 @@ export default function LoginPage() {
           setLoading(false);
           return;
         }
-        const requestedRole = loginMode === "admin" ? "admin" : loginMode === "worker" ? "cleanup_worker" : "citizen";
+        const requestedRole = loginMode === "worker" ? "cleanup_worker" : "citizen";
         const snapshot = await authService.googleLogin(accessToken, requestedRole);
         const route = snapshot.role === "cleanup_worker" ? "/worker/home" : snapshot.role !== "citizen" ? "/admin/dashboard" : "/home";
         navigate(route);
@@ -176,13 +176,6 @@ export default function LoginPage() {
     setError("");
     try {
       const snapshot = await authService.login({ email, password });
-      if (loginMode === "admin" && snapshot.role === "citizen") {
-        // Selected the Admin tab but this account is a citizen account —
-        // explain instead of silently dumping them into the citizen app.
-        setError(`"${email}" is a citizen account. Use an admin account (e.g. admin@swachhlens.app) or sign in with the Citizen tab.`);
-        setLoading(false);
-        return;
-      }
       const route = snapshot.role === "cleanup_worker" ? "/worker/home" : snapshot.role !== "citizen" ? "/admin/dashboard" : "/home";
       navigate(route);
     } catch (err) {
@@ -299,7 +292,6 @@ export default function LoginPage() {
                 {[
                   { key: "citizen", label: t("roleCitizen"), icon: "person" },
                   { key: "worker", label: t("roleWorker"), icon: "engineering" },
-                  { key: "admin", label: t("roleAdmin"), icon: "admin_panel_settings" },
                 ].map(function (opt) {
                   return (
                     <button

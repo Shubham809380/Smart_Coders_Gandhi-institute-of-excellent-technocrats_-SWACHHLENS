@@ -44,7 +44,7 @@ export function ReconnectingScreen() {
   );
 }
 
-export function ProtectedRoute({ children, allowedRoles }) {
+export function ProtectedRoute({ children, allowedRoles, loginPath = "/login" }) {
   const snapshot = authService.getSessionSnapshot();
   const role = snapshot.role || authService.getCurrentRole();
   const isAuth = snapshot.isAuthenticated;
@@ -54,7 +54,7 @@ export function ProtectedRoute({ children, allowedRoles }) {
     return <ReconnectingScreen />;
   }
 
-  if (!isAuth) return <Navigate to="/login" replace />;
+  if (!isAuth) return <Navigate to={loginPath} replace />;
 
   if (allowedRoles && !allowedRoles.includes(role)) {
     const roleHome = {

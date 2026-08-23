@@ -5,11 +5,11 @@ import { store } from "./store.js";
 
 const seedUsers = [
   { uid: "user-citizen", name: "Ananya Das", email: "citizen@swachhlens.app", phone: "+919876543210", role: ROLES.CITIZEN, ward_id: "ward-12", location_name: "Bhubaneswar, Unit 4" },
-  { uid: "user-admin", name: "Municipal Admin", email: "admin@swachhlens.app", phone: "+919812340000", role: ROLES.ADMIN, ward_id: "ward-north", location_name: "Region North" },
+  { uid: "user-admin", name: "Command Center Admin", email: "admin@swachhlens.demo", phone: "+919812340000", role: ROLES.SUPER_ADMIN, ward_id: "ward-north", location_name: "Region North" },
   { uid: "user-worker", name: "Team Alpha", email: "worker@swachhlens.app", phone: "+919800001111", role: ROLES.CLEANUP_WORKER, ward_id: "ward-12", location_name: "Ward 12" },
 ];
 
-const seedPasswords = { "user-citizen": "citizen123", "user-admin": "admin123", "user-worker": "worker123" };
+const seedPasswords = { "user-citizen": "citizen123", "user-admin": "admin@809", "user-worker": "worker123" };
 
 const seedTeams = [
   { id: "team-07", name: "Sanitation Team 07", leader_id: "worker-leader-07", member_ids: ["worker-07-a","worker-07-b","worker-07-c","worker-07-d"], ward_ids: ["ward-12","ward-13"], vehicle_type: "Mini Tipper", vehicle_capacity: "medium", status: "available", current_location_latitude: 20.2978, current_location_longitude: 85.8265, current_location_label: "Ward 12 Depot", completed_today: 6, average_resolution_time: 78, eta_minutes: 12, distance_km: 1.8, ai_match_score: 94 },

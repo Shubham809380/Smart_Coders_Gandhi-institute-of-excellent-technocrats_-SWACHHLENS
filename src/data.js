@@ -110,10 +110,10 @@ export const demoProfiles = {
   },
   admin: {
     uid: "user-admin",
-    name: "Municipal Admin",
-    email: "admin@swachhlens.app",
+    name: "Command Center Admin",
+    email: "admin@swachhlens.demo",
     phone: "+919812340000",
-    role: "admin",
+    role: "super_admin",
     isActive: true,
     locationName: "Region North",
     createdAt: "2026-07-20T10:00:00+05:30",
