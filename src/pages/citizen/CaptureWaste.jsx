@@ -4,13 +4,18 @@ import { reportService, permissionService } from '../../services.js';
 
 export default function CaptureWaste() {
   const navigate = useNavigate();
-  const [captureMode, setCaptureMode] = useState('photo');
   const [flashVisible, setFlashVisible] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [preview, setPreview] = useState(null);
   const [location, setLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(true);
+  const [showManualLocation, setShowManualLocation] = useState(false);
+  const [manualLat, setManualLat] = useState('');
+  const [manualLng, setManualLng] = useState('');
+  const [manualError, setManualError] = useState('');
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -34,6 +39,10 @@ export default function CaptureWaste() {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => setCameraReady(true);
       }
+      const track = stream.getVideoTracks?.()[0];
+      if (track && typeof track.getCapabilities === 'function' && track.getCapabilities().torch) {
+        setTorchSupported(true);
+      }
     } catch {
       setCameraError('Camera access denied. Use gallery to upload a photo.');
     }
@@ -46,10 +55,43 @@ export default function CaptureWaste() {
     }
   };
 
+  const toggleTorch = async () => {
+    const track = streamRef.current?.getVideoTracks?.()[0];
+    if (!track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !torchOn }] });
+      setTorchOn(!torchOn);
+    } catch {
+      setTorchSupported(false);
+    }
+  };
+
   const getLocation = async () => {
+    setLocationLoading(true);
     const result = await permissionService.requestLocation();
-    if (result.location) setLocation(result.location);
+    if (result.location) {
+      setLocation(result.location);
+    } else {
+      setShowManualLocation(true);
+    }
     setLocationLoading(false);
+  };
+
+  const applyManualLocation = () => {
+    setManualError('');
+    const lat = parseFloat(manualLat);
+    const lng = parseFloat(manualLng);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) { setManualError('Latitude must be between -90 and 90.'); return; }
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) { setManualError('Longitude must be between -180 and 180.'); return; }
+    setLocation({
+      latitude: lat,
+      longitude: lng,
+      timestamp: new Date().toISOString(),
+      // Left blank on purpose — the backend reverse-geocodes coordinates on submit.
+      address: '',
+      source: 'manual',
+    });
+    setShowManualLocation(false);
   };
 
   const captureFrame = useCallback(() => {
@@ -87,7 +129,13 @@ export default function CaptureWaste() {
     await reportService.updateDraft({
       image: preview,
       mediaType: 'image',
-      location: { latitude: location.latitude, longitude: location.longitude, address: location.address || `Location ${location.latitude?.toFixed(4)}, ${location.longitude?.toFixed(4)}` },
+      location: {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        // Empty address => backend reverse-geocodes coordinates on submit.
+        address: location.address || '',
+        source: location.source || 'gps',
+      },
     });
     navigate('/analyzing');
   };
