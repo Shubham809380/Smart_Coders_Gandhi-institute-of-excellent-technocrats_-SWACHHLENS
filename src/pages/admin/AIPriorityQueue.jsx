@@ -16,12 +16,12 @@ function ScoreCircle({ score, strokeColor }) {
 }
 
 export default function AIPriorityQueue() {
-  const navigate = useNavigate();
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [teams, setTeams] = useState([]);
   const [dispatching, setDispatching] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -34,11 +34,27 @@ export default function AIPriorityQueue() {
     setLoading(false);
   };
 
+  const selectReport = async (item) => {
+    setSelected(item);
+    setSuggestions([]);
+    try { setSuggestions(await teamService.getDispatchSuggestions(item.id)); }
+    catch (err) { console.warn('[dispatch-suggest] failed:', err?.message); }
+  };
+
   const handleDispatch = async (reportId, teamId) => {
     setDispatching(true);
-    try { await teamService.assignTeam(reportId, teamId); fetchData(); setSelected(null); }
+    try { await teamService.assignTeam(reportId, teamId); fetchData(); setSelected(null); setSuggestions([]); }
     catch (err) { console.error(err); }
     setDispatching(false);
+  };
+
+  const autoDispatchBestMatch = async () => {
+    if (!selected) return;
+    let targetTeam = null;
+    if (suggestions.length > 0) targetTeam = suggestions[0].team;
+    else targetTeam = teams.find((t) => t.status === 'available');
+    if (!targetTeam) return;
+    await handleDispatch(selected.id, targetTeam.id);
   };
 
   const getScoreColor = (score) => {
@@ -80,7 +96,7 @@ export default function AIPriorityQueue() {
               const colors = getScoreColor(item.priorityScore);
               const isActive = selected?.id === item.id;
               return (
-                <div key={item.id} className={`relative grid grid-cols-1 lg:grid-cols-12 gap-3 p-4 rounded-2xl cursor-pointer transition-all duration-200 border ${isActive ? 'bg-surface shadow-md border-cyan-300 ring-1 ring-cyan-200/50' : 'bg-surface border-black/[0.03] hover:bg-surface-container-low shadow-sm'}`} onClick={() => setSelected(item)}>
+                <div key={item.id} className={`relative grid grid-cols-1 lg:grid-cols-12 gap-3 p-4 rounded-2xl cursor-pointer transition-all duration-200 border ${isActive ? 'bg-surface shadow-md border-cyan-300 ring-1 ring-cyan-200/50' : 'bg-surface border-black/[0.03] hover:bg-surface-container-low shadow-sm'}`} onClick={() => selectReport(item)}>
                   {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500 rounded-l-2xl shadow-[0_0_8px_rgba(6,182,212,0.6)]" />}
 
                   <div className="col-span-full lg:col-span-2 flex flex-row lg:flex-col items-center justify-start lg:justify-center gap-3">
