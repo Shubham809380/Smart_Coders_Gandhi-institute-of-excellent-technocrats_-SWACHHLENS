@@ -74,26 +74,9 @@ const PERMISSIONS = [
     icon: "folder",
     color: "#f472b6",
     request: async () => {
-      try {
-        if (window.showOpenFilePicker) {
-          const handle = await window.showOpenFilePicker({
-            multiple: false,
-            types: [{ description: "Images", accept: { "image/*": [".png", ".jpg", ".jpeg", ".webp"] } }],
-          });
-          return handle.length > 0 ? "granted" : "denied";
-        }
-        return new Promise((resolve) => {
-          const input = document.createElement("input");
-          input.type = "file";
-          input.accept = "image/*";
-          input.onchange = () => resolve(input.files.length > 0 ? "granted" : "denied");
-          input.onerror = () => resolve("denied");
-          input.click();
-          setTimeout(() => resolve("skipped"), 5000);
-        });
-      } catch {
-        return "denied";
-      }
+      // Browsers grant file access at upload time, not upfront — no picker
+      // should open here. Just acknowledge the permission.
+      return "granted";
     },
   },
 ];
