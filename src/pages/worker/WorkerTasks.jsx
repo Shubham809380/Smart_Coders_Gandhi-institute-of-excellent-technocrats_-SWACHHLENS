@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import { workerService, authService } from "../../services.js";
 import { haversineKm, timeSince } from "../../utils/helpers.js";
+import { useLive } from "../../hooks/useLive.js";
 
 const severityColor = { critical: "bg-red-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-emerald-400" };
 const statusLabel = { assigned: "New", en_route: "Accepted", cleanup_in_progress: "In Progress" };
@@ -32,14 +33,20 @@ export default function WorkerTasks() {
   const [refreshing, setRefreshing] = useState(false);
   const [userName, setUserName] = useState("");
   const [alertCount, setAlertCount] = useState(0);
+  const [stats, setStats] = useState(null);
+  const [dutyBusy, setDutyBusy] = useState(false);
   const touchStartY = useRef(0);
   const containerRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const data = await workerService.getTasks();
+      const [data, s] = await Promise.all([
+        workerService.getTasks(),
+        workerService.getStats().catch(() => null),
+      ]);
       setTasks(data.tasks || []);
       setDutyStatus(data.dutyStatus || "off_duty");
+      if (s) setStats(s);
       const snap = authService.getSessionSnapshot();
       setUserName(snap.currentUser?.name || "Worker");
     } catch (e) { console.error(e); }
@@ -48,6 +55,27 @@ export default function WorkerTasks() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Realtime: task pushes, status changes and citizen ratings arrive via the
+  // socket; the poll is a resilience net that only runs while disconnected.
+  useLive(
+    useCallback((evt) => {
+      if (["task:assigned", "waste:status:update", "notification:new", "feedback:submitted"].includes(evt)) fetchData();
+    }, [fetchData]),
+    ["task:assigned", "waste:status:update", "notification:new", "feedback:submitted"],
+    { pollMs: 45000, poll: fetchData },
+  );
+
+  const toggleDuty = async () => {
+    if (dutyBusy) return;
+    const next = dutyStatus === "on_duty" ? "off_duty" : "on_duty";
+    setDutyBusy(true);
+    try {
+      await workerService.toggleDuty(next);
+      setDutyStatus(next);
+    } catch (e) { console.error(e); }
+    setDutyBusy(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +123,10 @@ export default function WorkerTasks() {
 
   const assigned = tasks.filter((t) => t.status === "assigned").length;
   const inProgress = tasks.filter((t) => ["en_route", "cleanup_in_progress"].includes(t.status)).length;
-  const completedToday = tasks.filter((t) => t.status === "resolved").length;
+  // Server-side summary: resolved tasks never appear in the active list, so
+  // today's completions + citizen rating come from /api/worker/stats.
+  const completedToday = stats?.completedToday ?? 0;
+  const avgRating = stats?.avgRating ?? null;
 
   const sorted = [...tasks].sort((a, b) => {
     if (sortBy === "priority") return (b.priorityScore || 0) - (a.priorityScore || 0);
@@ -136,6 +167,20 @@ export default function WorkerTasks() {
                 </span>
               )}
             </button>
+            <button
+              onClick={toggleDuty}
+              disabled={dutyBusy}
+              aria-label={dutyStatus === "on_duty" ? "Go off duty" : "Go on duty"}
+              title={dutyStatus === "on_duty" ? "Go off duty" : "Go on duty"}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors mr-2 disabled:opacity-60 ${dutyStatus === "on_duty" ? "bg-emerald-100 active:bg-emerald-200" : "bg-amber-100 active:bg-amber-200"}`}
+            >
+              <span
+                className={`material-symbols-outlined text-[20px] ${dutyStatus === "on_duty" ? "text-emerald-600" : "text-amber-600"}`}
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                {dutyStatus === "on_duty" ? "work" : "work_off"}
+              </span>
+            </button>
             <button onClick={onRefresh} className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 active:bg-gray-200 transition-colors">
               <span className={`material-symbols-outlined text-gray-600 text-[22px] ${refreshing ? "animate-spin" : ""}`}>refresh</span>
             </button>
@@ -144,24 +189,44 @@ export default function WorkerTasks() {
       </div>
 
       {dutyStatus === "off_duty" && (
-        <div className="mx-4 mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
+        <button onClick={toggleDuty} disabled={dutyBusy} className="mx-4 mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 text-left active:bg-amber-100 transition-colors w-[calc(100%-2rem)] disabled:opacity-60">
           <span className="material-symbols-outlined text-amber-600">work_off</span>
-          <span className="text-sm font-bold text-amber-800">You're off duty. Turn on to receive tasks.</span>
-        </div>
+          <span className="text-sm font-bold text-amber-800 flex-1">You're off duty. Turn on to receive tasks.</span>
+          <span className="h-9 px-4 rounded-xl bg-green-600 text-white text-xs font-extrabold flex items-center gap-1 shrink-0">
+            <span className="material-symbols-outlined text-[16px]">power_settings_new</span>
+            Go On Duty
+          </span>
+        </button>
       )}
 
       <div className="px-4 mt-4 flex gap-3 overflow-x-auto no-scrollbar">
-        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 min-w-[110px] flex flex-col items-center shrink-0">
+        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 min-w-[104px] flex flex-col items-center shrink-0">
           <span className="text-2xl font-extrabold text-orange-600">{assigned}</span>
           <span className="text-[11px] font-bold text-orange-500 mt-1">Assigned</span>
         </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 min-w-[110px] flex flex-col items-center shrink-0">
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 min-w-[104px] flex flex-col items-center shrink-0">
           <span className="text-2xl font-extrabold text-blue-600">{inProgress}</span>
           <span className="text-[11px] font-bold text-blue-500 mt-1">In Progress</span>
         </div>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 min-w-[110px] flex flex-col items-center shrink-0">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 min-w-[104px] flex flex-col items-center shrink-0">
           <span className="text-2xl font-extrabold text-emerald-600">{completedToday}</span>
-          <span className="text-[11px] font-bold text-emerald-500 mt-1">Completed</span>
+          <span className="text-[11px] font-bold text-emerald-500 mt-1">Done Today</span>
+        </div>
+        <div className={`rounded-2xl p-4 min-w-[104px] flex flex-col items-center shrink-0 border ${avgRating != null ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
+          {avgRating != null ? (
+            <>
+              <span className="flex items-center gap-1">
+                <span className="material-symbols-outlined text-amber-500 text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+                <span className="text-2xl font-extrabold text-amber-600">{avgRating}</span>
+              </span>
+              <span className="text-[11px] font-bold text-amber-500 mt-1">Citizen Rating</span>
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined text-gray-300 text-[24px] mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>star_outline</span>
+              <span className="text-[11px] font-bold text-gray-400 mt-1">No Ratings Yet</span>
+            </>
+          )}
         </div>
       </div>
 

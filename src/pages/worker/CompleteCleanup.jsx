@@ -61,8 +61,12 @@ export default function CompleteCleanup() {
       } catch (verifyErr) {
         console.warn("[cleanup] AI verification skipped:", verifyErr?.message);
       }
-      await workerService.updateReportStatus(report.id, "verification", { afterImage: dataUrl });
-      await workerService.saveReportNotes(report.id, { workerNotes: notes, actualVolume: volume });
+      // Single round-trip: status + after photo + notes + volume together.
+      await workerService.updateReportStatus(report.id, "verification", {
+        afterImage: dataUrl,
+        workerNotes: notes,
+        actualVolume: volume,
+      });
       setSubmitted(true);
     } catch (e) { console.error(e); }
     setSubmitting(false);
@@ -133,6 +137,14 @@ export default function CompleteCleanup() {
           <div className="flex flex-col flex-1">
             <h2 className="text-xl font-extrabold text-gray-900 mb-1">Capture After Photo</h2>
             <p className="text-sm text-gray-500 mb-6">Take a photo of the cleaned area as proof of completion.</p>
+
+            {/* Before reference: match the angle so admins can compare instantly. */}
+            {report?.image && (
+              <div className="relative w-full rounded-xl overflow-hidden border border-gray-200 mb-4">
+                <img src={report.image} alt="Before reference" className="w-full h-36 object-cover" />
+                <span className="absolute top-2 left-2 bg-black/55 text-[10px] font-bold text-white px-2 py-0.5 rounded">BEFORE — match this angle</span>
+              </div>
+            )}
 
             {!photoPreview ? (
               <button onClick={() => fileRef.current?.click()} className="w-full bg-white rounded-2xl border-2 border-dashed border-gray-300 p-12 text-center active:border-green-400 transition-colors">

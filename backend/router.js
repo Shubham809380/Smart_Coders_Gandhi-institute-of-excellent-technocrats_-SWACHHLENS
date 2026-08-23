@@ -725,7 +725,16 @@ export async function handleApiRequest(req, res) {
         updates["afterMedia.imageUrl"] = afterMedia.url;
         updates["afterMedia.storagePath"] = afterMedia.storagePath;
       }
-      const updated = await store.updateReport(reportId, updates);
+      const updated0 = await store.updateReport(reportId, updates);
+      // Single-submit completion: workers may include notes + actual volume
+      // with the status change so the cleanup flow is one round-trip.
+      let updated = updated0;
+      if (body.workerNotes !== undefined || body.actualVolume !== undefined) {
+        const noteUpdates = {};
+        if (body.workerNotes !== undefined) noteUpdates.workerNotes = body.workerNotes;
+        if (body.actualVolume !== undefined) noteUpdates.actualVolume = body.actualVolume;
+        updated = await store.updateWorkerReport(reportId, noteUpdates);
+      }
       const statusLabel = nextStatus.replace(/_/g, " ");
       // Live sync: everyone authorized to watch this report + all admins.
       const targets = { roles: [...ADMIN_ROLES], rooms: [`report:${reportId}`] };
@@ -1305,6 +1314,13 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       return json(res, 200, { tasks: tasks.map(formatReportForClient), dutyStatus: user?.dutyStatus || "off_duty" });
     }
 
+    if (pathname === "/api/worker/stats" && req.method === "GET") {
+      const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
+      if (!auth) return;
+      const summary = await store.getWorkerSummary(auth.user.uid);
+      return json(res, 200, { stats: summary });
+    }
+
     if (pathname === "/api/worker/history" && req.method === "GET") {
       const auth = await requireRoles(req, res, [ROLES.CLEANUP_WORKER]);
       if (!auth) return;
@@ -1459,6 +1475,16 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
         notifyUser(uid, {
           title: `Citizen rated ${reportId}`,
           body: `${rating}/5${comment ? ` · "${comment.slice(0, 60)}"` : ""}`,
+          kind: "feedback", reportId,
+        });
+      }
+      // Close the loop: the cleanup crew sees the citizen's rating in real time.
+      const ratedWorkerUids = await getAssignedWorkerUids(updated);
+      publish("feedback:submitted", { reportId, rating }, { uids: ratedWorkerUids });
+      for (const uid of ratedWorkerUids) {
+        notifyUser(uid, {
+          title: rating >= 4 ? "Great work — citizen loved it!" : "Citizen rated your cleanup",
+          body: `${reportId} · ${rating}/5${comment ? ` · "${comment.slice(0, 60)}"` : ""}`,
           kind: "feedback", reportId,
         });
       }

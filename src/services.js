@@ -765,6 +765,10 @@ export const workerService = {
         const data = await api("/worker/history");
         return data.tasks || [];
     },
+    async getStats() {
+        const data = await api("/worker/stats");
+        return data.stats || {};
+    },
     async toggleDuty(dutyStatus) {
         const data = await api("/worker/duty", { method: "PUT", body: JSON.stringify({ dutyStatus }) });
         return data.user;
@@ -772,11 +776,9 @@ export const workerService = {
     async updateReportStatus(id, status, extra = {}) {
         const body = { status };
         if (extra.afterImage) body.afterImage = extra.afterImage;
+        if (extra.workerNotes !== undefined) body.workerNotes = extra.workerNotes;
+        if (extra.actualVolume !== undefined) body.actualVolume = extra.actualVolume;
         const data = await api(`/reports/${id}/status`, { method: "PATCH", body: JSON.stringify(body) });
-        return data.report;
-    },
-    async saveReportNotes(reportId, notes) {
-        const data = await api("/worker/report-notes", { method: "PUT", body: JSON.stringify({ reportId, ...notes }) });
         return data.report;
     },
     async reportIssue(reportId, reason) {

@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { workerService, reportService } from "../../services.js";
+import { useLive } from "../../hooks/useLive.js";
 
 const statusAction = {
   assigned: { label: "Accept Task", nextStatus: "en_route", color: "bg-green-600", shadow: "0 6px 20px -4px rgba(0,107,44,0.4)" },
@@ -34,6 +35,26 @@ export default function TaskDetail() {
       reportService.getReportById(reportId).then((r) => { setReport(r); setLoading(false); }).catch(() => setLoading(false));
     }
   }, [report, reportId]);
+
+  const refresh = useCallback(async () => {
+    if (!reportId) return;
+    try {
+      const r = await reportService.getReportById(reportId);
+      if (r) setReport(r);
+    } catch {}
+  }, [reportId]);
+
+  // Realtime: dispatch moves (reassign, reopen, status changes by admins or
+  // teammates on this case) reflect instantly; poll only while disconnected.
+  useLive(
+    useCallback((evt, payload) => {
+      const pid = payload?.reportId || payload?.id;
+      if (pid && pid !== reportId) return;
+      if (["waste:status:update", "waste:updated", "notification:new"].includes(evt)) refresh();
+    }, [reportId, refresh]),
+    ["waste:status:update", "waste:updated", "notification:new"],
+    { pollMs: 60000, poll: refresh },
+  );
 
   const handleAction = async () => {
     if (!report) return;

@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import { workerService } from "../../services.js";
 import { timeSince } from "../../utils/helpers.js";
+import { useLive } from "../../hooks/useLive.js";
 
 function groupByDate(tasks) {
   const groups = {};
@@ -25,12 +26,29 @@ export default function WorkerHistory() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    workerService.getHistory().then((t) => { setTasks(t); setLoading(false); }).catch(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      const t = await workerService.getHistory();
+      setTasks(t);
+    } catch {}
+    setLoading(false);
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Realtime: newly approved/rejected work and citizen ratings stream in live.
+  useLive(
+    useCallback((evt) => {
+      if (["waste:status:update", "notification:new", "feedback:submitted"].includes(evt)) load();
+    }, [load]),
+    ["waste:status:update", "notification:new", "feedback:submitted"],
+    { pollMs: 60000, poll: load },
+  );
 
   const approved = tasks.filter((t) => t.status === "resolved").length;
   const rejected = tasks.filter((t) => t.status === "rejected").length;
+  const rated = tasks.filter((t) => Number.isFinite(Number(t.feedbackRating)) && t.feedbackRating != null);
+  const avgRating = rated.length ? Math.round((rated.reduce((s, t) => s + Number(t.feedbackRating), 0) / rated.length) * 10) / 10 : null;
   const rate = tasks.length > 0 ? Math.round((approved / tasks.length) * 100) : 0;
   const groups = groupByDate(tasks);
 
@@ -51,16 +69,27 @@ export default function WorkerHistory() {
       </div>
 
       {tasks.length > 0 && (
-        <div className="px-4 mt-4 flex gap-3">
-          <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+        <div className="px-4 mt-4 grid grid-cols-2 gap-3">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
             <span className="text-lg font-extrabold text-emerald-600">{approved}</span>
             <span className="text-[10px] font-bold text-emerald-500 block mt-0.5">Approved</span>
           </div>
-          <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
             <span className="text-lg font-extrabold text-red-600">{rejected}</span>
             <span className="text-[10px] font-bold text-red-500 block mt-0.5">Rejected</span>
           </div>
-          <div className="flex-1 bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+          <div className={`rounded-xl p-3 text-center border ${avgRating != null ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
+            {avgRating != null ? (
+              <span className="flex items-center justify-center gap-1">
+                <span className="material-symbols-outlined text-amber-500 text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+                <span className="text-lg font-extrabold text-amber-600">{avgRating}</span>
+              </span>
+            ) : (
+              <span className="text-lg font-extrabold text-gray-400">—</span>
+            )}
+            <span className={`text-[10px] font-bold block mt-0.5 ${avgRating != null ? "text-amber-500" : "text-gray-400"}`}>Citizen Rating</span>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
             <span className="text-lg font-extrabold text-blue-600">{rate}%</span>
             <span className="text-[10px] font-bold text-blue-500 block mt-0.5">Approval Rate</span>
           </div>
@@ -118,8 +147,27 @@ export default function WorkerHistory() {
                           </span>
                           <span className="text-[11px] text-gray-300">{timeSince(task.updatedAt)}</span>
                         </div>
+                        {task.status === "resolved" && task.feedbackRating != null && (
+                          <div className="flex items-center gap-1 mt-1.5">
+                            {[1, 2, 3, 4, 5].map((v) => (
+                              <span key={v} className="material-symbols-outlined text-[13px]" style={{ color: v <= Number(task.feedbackRating) ? "#F5A623" : "#D1D5DB", fontVariationSettings: "'FILL' 1" }}>star</span>
+                            ))}
+                            <span className="text-[10px] font-extrabold text-gray-500 ml-0.5">citizen</span>
+                          </div>
+                        )}
                       </div>
                     </div>
+                    {task.status === "resolved" && task.feedbackComment && (
+                      <div className="px-4 pb-4 -mt-1">
+                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="material-symbols-outlined text-gray-400 text-[14px]">chat_bubble</span>
+                            <span className="text-[11px] font-bold text-gray-500">Citizen Feedback</span>
+                          </div>
+                          <p className="text-xs text-gray-600 leading-relaxed">{task.feedbackComment}</p>
+                        </div>
+                      </div>
+                    )}
                     {task.status === "rejected" && task.rejectionReason && (
                       <div className="px-4 pb-4">
                         <div className="bg-red-50 border border-red-100 rounded-xl p-3">

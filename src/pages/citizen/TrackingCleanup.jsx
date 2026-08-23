@@ -270,6 +270,60 @@ export default function TrackingCleanup() {
             </Box>
           )}
 
+          {/* ─── Cleanup Result: Before / After comparison ─── */}
+          {report?.afterImage && (
+            <Box sx={{
+              bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+              border:`1px solid ${T.border}`, borderRadius:2, overflow:'hidden',
+              borderTop:`1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)'}`,
+              animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.12s both`,
+            }}>
+              <Box sx={{ display:'flex', alignItems:'center', gap:1.5, px:2.5, pt:2, pb:1.5 }}>
+                <span className="material-symbols-outlined" style={{ fontSize:16, color:T.sevLow, fontVariationSettings:"'FILL' 1" }}>compare</span>
+                <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:14, color:T.text }}>Cleanup Result</span>
+                <Box sx={{ ml:'auto', bgcolor:`${T.sevLow}18`, borderRadius:1, px:1, py:0.25 }}>
+                  <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:9, fontWeight:700, color:T.sevLow, letterSpacing:'0.05em' }}>VERIFIED BY CREW</span>
+                </Box>
+              </Box>
+              <Box sx={{ px:2.5, pb:2.5, display:'flex', gap:1.5 }}>
+                <Box sx={{ flex:1, position:'relative', borderRadius:1.5, overflow:'hidden', bgcolor: isDark ? '#1a2030' : '#E8ECF1' }}>
+                  <Box component="img" src={report.image || report.beforeImage} alt="Before cleanup" sx={{ width:'100%', height:130, objectFit:'cover', display:'block' }} />
+                  <Box sx={{ position:'absolute', top:6, left:6, bgcolor:'rgba(0,0,0,0.55)', backdropFilter:'blur(6px)', borderRadius:1, px:1, py:0.25 }}>
+                    <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:9, fontWeight:700, color:'#fff', letterSpacing:'0.06em' }}>BEFORE</span>
+                  </Box>
+                </Box>
+                <Box sx={{ alignSelf:'center', flexShrink:0 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:18, color:T.sevLow }}>arrow_forward</span>
+                </Box>
+                <Box sx={{ flex:1, position:'relative', borderRadius:1.5, overflow:'hidden', bgcolor: isDark ? '#1a2030' : '#E8ECF1' }}>
+                  <Box component="img" src={report.afterImage} alt="After cleanup" sx={{ width:'100%', height:130, objectFit:'cover', display:'block' }} />
+                  <Box sx={{ position:'absolute', top:6, left:6, bgcolor:T.sevLow, borderRadius:1, px:1, py:0.25 }}>
+                    <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:9, fontWeight:700, color:'#fff', letterSpacing:'0.06em' }}>AFTER</span>
+                  </Box>
+                </Box>
+              </Box>
+              {(report.workerNotes || report.actualVolume) && (
+                <Box sx={{ px:2.5, pb:2.5, mt:-1 }}>
+                  <Box sx={{ border:`1px dashed ${T.border}`, borderRadius:1.5, p:1.5 }}>
+                    {report.actualVolume && (
+                      <Box sx={{ display:'flex', alignItems:'center', gap:1, mb: report.workerNotes ? 0.75 : 0 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize:13, color:T.muted }}>scale</span>
+                        <span style={{ fontFamily:'"Inter",sans-serif', fontSize:11, color:T.muted }}>
+                          Volume cleared: <strong style={{ color:T.text, textTransform:'capitalize' }}>{String(report.actualVolume).replace(/_/g,' ')}</strong>
+                        </span>
+                      </Box>
+                    )}
+                    {report.workerNotes && (
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:11, color:T.muted, lineHeight:1.6, display:'block' }}>
+                        Crew note: “{report.workerNotes}”
+                      </span>
+                    )}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
           {/* ─── Stat Strip ─── */}
           <Box sx={{
             bgcolor:T.glass, backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',

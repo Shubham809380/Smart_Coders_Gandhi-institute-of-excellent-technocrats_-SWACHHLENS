@@ -922,6 +922,34 @@ export const store = {
     return res.rows.map(rowToReport);
   },
 
+  // Per-worker summary for the worker dashboard: task counters + citizen
+  // rating aggregates + today's completed count (single worker, no N+1).
+  async getWorkerSummary(uid) {
+    const res = await query(
+      `SELECT r.* FROM reports r JOIN teams t ON r.assigned_team_id = t.id
+       WHERE (t.leader_id = $1 OR $1 = ANY(t.member_ids))`,
+      [uid]
+    );
+    const reports = res.rows.map(rowToReport);
+    const resolved = reports.filter((r) => r.status === "resolved");
+    const rated = resolved.filter((r) => Number.isFinite(Number(r.feedbackRating)) && r.feedbackRating != null);
+    const todayStr = new Date().toDateString();
+    const completedToday = resolved.filter((r) => {
+      try { return new Date(r.updatedAt || r.resolvedAt).toDateString() === todayStr; } catch { return false; }
+    }).length;
+    const avgRating = rated.length
+      ? Math.round((rated.reduce((s, r) => s + Number(r.feedbackRating), 0) / rated.length) * 10) / 10
+      : null;
+    return {
+      activeTasks: reports.filter((r) => !["resolved", "rejected", "duplicate"].includes(r.status)).length,
+      totalTasks: reports.length,
+      completedTasks: resolved.length,
+      completedToday,
+      avgRating,
+      ratingCount: rated.length,
+    };
+  },
+
   async getWorkerHistory(uid) {
     const res = await query(
       `SELECT r.* FROM reports r JOIN teams t ON r.assigned_team_id = t.id
