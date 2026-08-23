@@ -966,6 +966,20 @@ export const store = {
     return this.getUserByUid(uid);
   },
 
+  // Every cleanup worker needs crew membership to receive assignments.
+  // New workers (email signup or Google) automatically join the default
+  // ward team so admin-assigned work reaches them in real time.
+  async ensureWorkerOnTeam(uid) {
+    const teams = await this.getTeams();
+    if (!teams.length) return null;
+    const mine = teams.find((t) => t.leaderId === uid || (t.memberIds || []).includes(uid));
+    if (mine) return mine;
+    const team = teams[0];
+    const memberIds = [...(team.memberIds || []), uid];
+    await query("UPDATE teams SET member_ids = $1, updated_at = NOW() WHERE id = $2", [memberIds, team.id]);
+    return this.getTeams().then((all) => all.find((t) => t.id === team.id));
+  },
+
   async updateWorkerReport(reportId, updates) {
     const setClauses = [];
     const values = [];

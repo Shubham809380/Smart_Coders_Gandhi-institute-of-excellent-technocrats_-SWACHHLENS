@@ -250,7 +250,13 @@ export async function handleApiRequest(req, res) {
       if (existing) return json(res, 409, { error: { code: "ACCOUNT_EXISTS", message: "An account with this email already exists." } });
       const uid = createId("user");
       const { salt, passwordHash } = await createPasswordHash(password);
-      const user = await store.createUser({ uid, name, email, phone, passwordHash, salt, role, termsAccepted: true, termsAcceptedAt: new Date().toISOString() });
+      let user = await store.createUser({ uid, name, email, phone, passwordHash, salt, role, termsAccepted: true, termsAcceptedAt: new Date().toISOString() });
+      if (role === ROLES.CLEANUP_WORKER) {
+        // New workers start on duty and join the default ward crew so
+        // admin-assigned work lands on their panel immediately.
+        user = await store.toggleDutyStatus(uid, "on_duty");
+        await store.ensureWorkerOnTeam(uid);
+      }
       welcomeEmail(user);
       const token = createSessionToken();
       await store.createSession(token, uid);
@@ -353,16 +359,30 @@ export async function handleApiRequest(req, res) {
         const uid = createId("user");
         const { passwordHash, salt } = await createPasswordHash("google-oauth-" + uid);
         user = await store.createUser({ uid, name, email, phone: "", passwordHash, salt, role: requestedRole, photoUrl: avatar });
+        if (requestedRole === ROLES.CLEANUP_WORKER) {
+          // New Google workers start on duty and join the default crew so
+          // their panel shows real assigned work right away.
+          user = await store.toggleDutyStatus(uid, "on_duty");
+          await store.ensureWorkerOnTeam(uid);
+        }
       } else {
-        // Role is provisioned at signup only. Social sign-in must NEVER
-        // overwrite an existing account's role — otherwise an admin who
-        // signs in with Google gets silently demoted to citizen. Promotions
-        // happen exclusively through the admin Users page / seeded accounts.
+        // Role rules for returning Google users:
+        // - Privileged roles (admin/officer/supervisor) are NEVER overwritten
+        //   — no silent demotion via social sign-in. Promotions/demotions for
+        //   staff happen exclusively through the admin console.
+        // - A citizen who explicitly picks the Worker tab becomes a worker,
+        //   mirroring public signup which already allows choosing this role.
         const updates = {};
+        if (requestedRole === ROLES.CLEANUP_WORKER && user.role === ROLES.CITIZEN) updates.role = ROLES.CLEANUP_WORKER;
         if (user.name !== name) updates.name = name;
         if (avatar && user.photoURL !== avatar) updates.photo_url = avatar;
         if (Object.keys(updates).length > 0) {
           user = await store.updateUserProfile(user.uid, updates);
+        }
+        if (user.role === ROLES.CLEANUP_WORKER && updates.role) {
+          // Freshly converted worker: flip duty on and attach to a crew.
+          if (user.dutyStatus !== "on_duty") user = await store.toggleDutyStatus(user.uid, "on_duty");
+          await store.ensureWorkerOnTeam(user.uid);
         }
       }
 
