@@ -256,7 +256,7 @@ Set these in `.env` (see `.env.example`):
 | Role | Email | Password |
 |---|---|---|
 | Citizen | `citizen@swachhlens.app` | `citizen123` |
-| Admin | `admin@swachhlens.demo` | `admin@809` |
+| Admin | `admin@swachhlens.com` | `admin@swachhlens.com` |
 | Worker | `worker@swachhlens.app` | `worker123` |
 
 > Normal sign-up always creates a **citizen** account. Admin and Worker roles are seeded / admin-provisioned only.

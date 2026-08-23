@@ -97,7 +97,7 @@ export default function AdminLoginPage() {
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@swachhlens.demo"
+                  placeholder="admin@swachhlens.com"
                   className="w-full pl-11 pr-4 py-3 rounded-xl text-[14px] font-semibold focus:outline-none focus:border-transparent transition-all"
                   style={{ background: "rgba(8,13,22,0.75)", border: "1px solid rgba(76,141,255,0.18)", color: "#E8ECF1" }}
                   onFocus={(e) => (e.target.style.borderColor = "#4C8DFF")}

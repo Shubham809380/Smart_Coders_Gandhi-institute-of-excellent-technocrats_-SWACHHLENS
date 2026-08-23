@@ -6,8 +6,8 @@ const pool = new pg.Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-const EMAIL = "admin@swachhlens.demo";
-const PASSWORD = "admin@809";
+const EMAIL = "admin@swachhlens.com";
+const PASSWORD = "admin@swachhlens.com";
 
 const salt = await bcrypt.genSalt(10);
 const passwordHash = await bcrypt.hash(PASSWORD, salt);

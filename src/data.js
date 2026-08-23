@@ -111,7 +111,7 @@ export const demoProfiles = {
   admin: {
     uid: "user-admin",
     name: "Command Center Admin",
-    email: "admin@swachhlens.demo",
+    email: "admin@swachhlens.com",
     phone: "+919812340000",
     role: "super_admin",
     isActive: true,

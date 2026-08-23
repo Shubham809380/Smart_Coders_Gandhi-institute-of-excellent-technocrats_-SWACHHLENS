@@ -19,7 +19,7 @@ export const seedUsers = {
   "user-admin": {
     uid: "user-admin",
     name: "Command Center Admin",
-    email: "admin@swachhlens.demo",
+    email: "admin@swachhlens.com",
     phone: "+919812340000",
     role: ROLES.ADMIN,
     wardId: "ward-north",
@@ -46,7 +46,7 @@ export const seedUsers = {
 
 export const seedAuthAccounts = {
   "user-citizen": { uid: "user-citizen", email: "citizen@swachhlens.app", salt: "seed-citizen", passwordHash: "seed:citizen123" },
-  "user-admin": { uid: "user-admin", email: "admin@swachhlens.demo", salt: "seed-admin", passwordHash: "seed:admin@809" },
+  "user-admin": { uid: "user-admin", email: "admin@swachhlens.com", salt: "seed-admin", passwordHash: "seed:admin@swachhlens.com" },
   "user-worker": { uid: "user-worker", email: "worker@swachhlens.app", salt: "seed-worker", passwordHash: "seed:worker123" }
 };
 
