@@ -64,11 +64,14 @@ export default function CaptureWaste() {
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks?.()[0];
     if (!track) return;
+    const next = !torchOn;
     try {
-      await track.applyConstraints({ advanced: [{ torch: !torchOn }] });
-      setTorchOn(!torchOn);
+      await track.applyConstraints({ advanced: [{ torch: next }] });
+      setTorchOn(next);
     } catch {
+      // Constraint rejected — the device lied about torch support.
       setTorchSupported(false);
+      setTorchOn(false);
     }
   };
 
@@ -148,18 +151,96 @@ export default function CaptureWaste() {
 
   const handleRetake = () => {
     setPreview(null);
+    setVideoClip('');
     startCamera();
   };
 
-  const handleGallerySelect = (e) => {
+  // Short clips (3-10s) are fine; anything bigger would blow past the server's
+  // upload body limit once base64-inflated, so stop it here with a clear reason.
+  const MAX_VIDEO_BYTES = 8 * 1024 * 1024;
+
+  const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => resolve(ev.target.result);
+    reader.onerror = () => reject(new Error('Could not read the selected file.'));
+    reader.readAsDataURL(file);
+  });
+
+  // Pulls one representative frame out of a clip — the AI pipeline is
+  // image-based, so this poster does the analysis while the clip is attached.
+  const extractVideoFrame = (videoDataUrl) => new Promise((resolve, reject) => {
+    const el = document.createElement('video');
+    el.preload = 'metadata';
+    el.muted = true;
+    el.playsInline = true;
+    el.src = videoDataUrl;
+    const cleanup = () => { el.onloadedmetadata = null; el.onseeked = null; el.onerror = null; el.src = ''; };
+    el.onloadedmetadata = () => {
+      try {
+        el.currentTime = Math.min(1, Math.max(0.1, (el.duration || 1) / 2));
+      } catch {
+        resolve(null);
+      }
+    };
+    el.onseeked = () => {
+      try {
+        const maxDim = 1024;
+        let w = el.videoWidth;
+        let h = el.videoHeight;
+        if (!w || !h) { cleanup(); resolve(null); return; }
+        if (w > maxDim || h > maxDim) {
+          const ratio = Math.min(maxDim / w, maxDim / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(el, 0, 0, w, h);
+        cleanup();
+        resolve(canvas.toDataURL('image/jpeg', 0.75));
+      } catch {
+        cleanup();
+        resolve(null);
+      }
+    };
+    el.onerror = () => { cleanup(); reject(new Error('This video format is not supported. Please use an MP4 clip.')); };
+  });
+
+  const handleGallerySelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
+
+    if (file.type.startsWith('video/')) {
+      if (file.size > MAX_VIDEO_BYTES) {
+        alert('Video is too large. Please choose a short clip (3-4 seconds, under 8MB).');
+        return;
+      }
+      try {
+        const videoDataUrl = await readAsDataUrl(file);
+        const frame = await extractVideoFrame(videoDataUrl);
+        if (!frame) {
+          // The AI pipeline is image-based — without a usable frame we can't analyze.
+          alert('Could not read this video. Please use an MP4 clip or take a photo.');
+          return;
+        }
+        setVideoClip(videoDataUrl);
+        setPreview(frame);
+        stopCamera();
+      } catch (err) {
+        setVideoClip('');
+        alert(err.message || 'Could not read this video. Please try another file.');
+      }
+      return;
+    }
+
     if (file.size > 10 * 1024 * 1024) {
       alert('Image is too large. Please select an image under 10MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
+    try {
+      const imageDataUrl = await readAsDataUrl(file);
       const img = new Image();
       img.onload = () => {
         const maxDim = 1024;
@@ -175,11 +256,14 @@ export default function CaptureWaste() {
         canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         setPreview(canvas.toDataURL('image/jpeg', 0.75));
+        setVideoClip('');
         stopCamera();
       };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+      img.onerror = () => alert('Could not read this image. Please try another file.');
+      img.src = imageDataUrl;
+    } catch {
+      alert('Could not read this image. Please try another file.');
+    }
   };
 
   return (
