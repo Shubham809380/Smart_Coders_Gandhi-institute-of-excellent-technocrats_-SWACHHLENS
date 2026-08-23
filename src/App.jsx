@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from "react";
 import { BrowserRouter, Route, Routes, Navigate, useParams } from "react-router-dom";
 import { ProtectedRoute, ReconnectingScreen } from "./components/ProtectedRoute";
-import { appService } from "./services.js";
+import { appService, authService } from "./services.js";
 import { APP_STATES } from "./data.js";
 import logo from "./logo.svg";
 
@@ -42,6 +42,7 @@ const TaskDetail = lazy(() => import("./pages/worker/TaskDetail"));
 const CompleteCleanup = lazy(() => import("./pages/worker/CompleteCleanup"));
 const WorkerMap = lazy(() => import("./pages/worker/WorkerMap"));
 const WorkerHistory = lazy(() => import("./pages/worker/WorkerHistory"));
+const WorkerProfile = lazy(() => import("./pages/worker/WorkerProfile"));
 
 function ComplaintDetailWrapper() {
   const { reportId } = useParams();
@@ -56,6 +57,13 @@ function AdminRoute({ children }) {
       {children}
     </ProtectedRoute>
   );
+}
+
+// Profile is role-scoped: workers get their own duty-toggle profile,
+// everyone else the standard one.
+function ProfilePage() {
+  const role = authService.getSessionSnapshot().role || authService.getCurrentRole();
+  return role === "cleanup_worker" ? <WorkerProfile /> : <Profile />;
 }
 
 function LoadingFallback() {
@@ -152,7 +160,7 @@ export default function App() {
             </ProtectedRoute>
           } />
           <Route path="/explore" element={
-            <ProtectedRoute allowedRoles={[...CITIZEN_ROLES, ...WORKER_ROLES]}>
+            <ProtectedRoute allowedRoles={CITIZEN_ROLES}>
               <ExploreMap />
             </ProtectedRoute>
           } />
@@ -182,7 +190,7 @@ export default function App() {
             </ProtectedRoute>
           } />
           <Route path="/my-reports" element={
-            <ProtectedRoute allowedRoles={[...CITIZEN_ROLES, ...WORKER_ROLES]}>
+            <ProtectedRoute allowedRoles={CITIZEN_ROLES}>
               <MyReports />
             </ProtectedRoute>
           } />
@@ -193,7 +201,7 @@ export default function App() {
           } />
           <Route path="/profile" element={
             <ProtectedRoute allowedRoles={[...CITIZEN_ROLES, ...WORKER_ROLES, ...ADMIN_ROLES]}>
-              <Profile />
+              <ProfilePage />
             </ProtectedRoute>
           } />
 

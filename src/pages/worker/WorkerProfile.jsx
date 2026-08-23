@@ -4,8 +4,8 @@ import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
 import { workerService, authService, profileService } from "../../services.js";
 import { useTheme } from "../../contexts/ThemeContext.jsx";
 
-const MaterialIcon = ({ name, className = "" }) => (
-  <span className={`material-symbols-outlined ${className}`}>{name}</span>
+const MaterialIcon = ({ name, className = "", style }) => (
+  <span className={`material-symbols-outlined ${className}`} style={style}>{name}</span>
 );
 
 export default function WorkerProfile() {
