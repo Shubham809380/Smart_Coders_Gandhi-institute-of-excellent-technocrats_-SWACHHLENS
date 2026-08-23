@@ -42,6 +42,7 @@ const TaskDetail = lazy(() => import("./pages/worker/TaskDetail"));
 const CompleteCleanup = lazy(() => import("./pages/worker/CompleteCleanup"));
 const WorkerMap = lazy(() => import("./pages/worker/WorkerMap"));
 const WorkerHistory = lazy(() => import("./pages/worker/WorkerHistory"));
+const WorkerNotifications = lazy(() => import("./pages/worker/WorkerNotifications"));
 const WorkerProfile = lazy(() => import("./pages/worker/WorkerProfile"));
 
 function ComplaintDetailWrapper() {
@@ -209,6 +210,11 @@ export default function App() {
           <Route path="/worker/history" element={
             <ProtectedRoute allowedRoles={WORKER_ROLES}>
               <WorkerHistory />
+            </ProtectedRoute>
+          } />
+          <Route path="/worker/notifications" element={
+            <ProtectedRoute allowedRoles={WORKER_ROLES}>
+              <WorkerNotifications />
             </ProtectedRoute>
           } />
 

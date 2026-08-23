@@ -245,5 +245,14 @@ export async function initDatabase() {
       auth TEXT NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
+    // Uploaded media blobs (base64). Vercel's filesystem is ephemeral, so
+    // photos/videos must live somewhere durable — Neon doubles as object store.
+    await db.query(`CREATE TABLE IF NOT EXISTS media_blobs (
+      storage_path TEXT PRIMARY KEY,
+      mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+      data_base64 TEXT NOT NULL,
+      byte_size INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
   } catch {}
 }

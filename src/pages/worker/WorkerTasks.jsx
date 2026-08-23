@@ -165,8 +165,8 @@ export default function WorkerTasks() {
               </div>
             </div>
             <button
-              onClick={() => navigate("/worker/map")}
-              aria-label="Proximity alerts"
+              onClick={() => navigate("/worker/notifications")}
+              aria-label="Notifications"
               className="relative w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 active:bg-gray-200 transition-colors mr-2"
             >
               <span className="material-symbols-outlined text-gray-600 text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>notifications</span>

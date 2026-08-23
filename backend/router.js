@@ -27,9 +27,9 @@ import { appConfig } from "./config.js";
 import { updateWorkerLocation, getAlerts as getProximityAlerts, dismissAlert as dismissProximityAlert, dismissAllAlerts as dismissAllProximityAlerts, dismissForReport } from "./proximity.js";
 import { sendPushToUser } from "./push.js";
 
-// Fetch a stored image (local /uploads path or remote URL) and return it as a
-// data URL for Gemini. Returns null on any failure — verification proceeds
-// without the before photo instead of erroring out.
+// Fetch a stored image (Postgres blob, legacy disk path or remote URL) and
+// return it as a data URL for Gemini. Returns null on any failure —
+// verification proceeds without the before photo instead of erroring out.
 async function toDataUrlIfLocal(url) {
   try {
     if (!url) return null;
@@ -44,14 +44,19 @@ async function toDataUrlIfLocal(url) {
       mimeType = res.headers.get("content-type") || mimeType;
       buffer = Buffer.from(await res.arrayBuffer());
     } else {
-      const { resolveUploadsRoot } = await import("./utils.js");
-      const { readFile } = await import("node:fs/promises");
-      const { join } = await import("node:path");
       const rel = String(url).replace(/^\/uploads\//, "");
-      const abs = join(resolveUploadsRoot(), rel);
-      buffer = await readFile(abs);
+      const { readStoredMedia, resolveUploadsRoot } = await import("./utils.js");
+      const blob = await readStoredMedia(rel).catch(() => null);
+      if (blob) {
+        mimeType = blob.mimeType || mimeType;
+        buffer = blob.buffer;
+      } else {
+        const { readFile } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        buffer = await readFile(join(resolveUploadsRoot(), rel));
+      }
     }
-    if (buffer.length > 8 * 1024 * 1024) return null;
+    if (!buffer || buffer.length > 8 * 1024 * 1024) return null;
     return `data:${mimeType};base64,${buffer.toString("base64")}`;
   } catch (err) {
     console.warn("[Gemini] could not load before image:", err.message);
@@ -637,8 +642,8 @@ export async function handleApiRequest(req, res) {
         return json(res, 400, { error: { code: "IMAGE_TOO_LARGE", message: "Image is too large. Please capture a smaller photo." } });
       }
       const reportId = `REP-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-      const beforeMedia = saveDataUrlMedia(payload.image, `reports/${auth.user.uid}/${reportId}/before`);
-      const videoMedia = saveDataUrlMedia(payload.video, `reports/${auth.user.uid}/${reportId}/before-video`);
+      const beforeMedia = await saveDataUrlMedia(payload.image, `reports/${auth.user.uid}/${reportId}/before`);
+      const videoMedia = await saveDataUrlMedia(payload.video, `reports/${auth.user.uid}/${reportId}/before-video`);
       const aiAnalysis = { wasteType: payload.aiResult.wasteType, confidence: Math.round(Number(payload.aiResult.confidence) || 0), estimatedVolume: payload.aiResult.estimatedVolume, estimatedVolumeRange: payload.aiResult.estimatedVolumeRange, severity: payload.aiResult.severity, potentialRisks: String(payload.aiResult.potentialRisk || "").split(",").map((s) => s.trim()).filter(Boolean), recommendation: payload.aiResult.recommendation };
 
       let resolvedAddress = payload.location.address || "";
@@ -757,7 +762,7 @@ export async function handleApiRequest(req, res) {
       const timeline = [...(report.statusTimeline || []), { status: nextStatus, at: nowIso() }];
       const updates = { status: nextStatus, statusTimeline: timeline };
       if (body.afterImage) {
-        const afterMedia = saveDataUrlMedia(body.afterImage, `cleanup/${reportId}/after`);
+        const afterMedia = await saveDataUrlMedia(body.afterImage, `cleanup/${reportId}/after`);
         updates["afterMedia.imageUrl"] = afterMedia.url;
         updates["afterMedia.storagePath"] = afterMedia.storagePath;
       }

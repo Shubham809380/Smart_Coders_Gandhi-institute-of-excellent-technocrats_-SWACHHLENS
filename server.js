@@ -7,6 +7,7 @@ import { initDatabase } from "./backend/db.js";
 import { seedDatabase, seedVehicles } from "./backend/seed-neon.js";
 import { store } from "./backend/store.js";
 import { handleApiRequest } from "./backend/router.js";
+import { serveStoredMedia } from "./backend/utils.js";
 import { subscribe as subscribeEvents } from "./backend/events.js";
 
 // Resilience: transient DNS/Neon blips must log, never kill the server.
@@ -56,6 +57,7 @@ function startServer(portToUse) {
         return;
       }
       if (urlPath.startsWith("/uploads/")) {
+        if (await serveStoredMedia(req, res, urlPath)) return;
         res.writeHead(404);
         res.end("Not found");
         return;

@@ -1,10 +1,11 @@
 import { randomBytes, createHash } from "node:crypto";
-import { extname, join } from "node:path";
-import { mkdirSync, writeFileSync, constants as fsConstants, accessSync } from "node:fs";
+import { extname, join, normalize, sep } from "node:path";
+import { existsSync, statSync, createReadStream, constants as fsConstants, accessSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import bcrypt from "bcryptjs";
+import { query } from "./db.js";
 import { PRIORITY_WEIGHTS, REPORT_STATUSES } from "./constants.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,7 +20,7 @@ function resolveUploadsRoot() {
   return join(tmpdir(), "swachhlens-uploads");
 }
 
-const uploadsRoot = resolveUploadsRoot();
+export { resolveUploadsRoot };
 
 export function nowIso() {
   return new Date().toISOString();
@@ -277,7 +278,21 @@ export function formatTeamForClient(team) {
   };
 }
 
-export function saveDataUrlMedia(dataUrl, relativePathPrefix) {
+const MEDIA_MIME_BY_EXT = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".webp": "image/webp", ".mp4": "video/mp4",
+};
+
+// ~9MB of binary after base64 inflation — Vercel's request body limit caps
+// uploads well below this anyway; the guard only stops pathological rows.
+const MAX_BLOB_CHARS = 12 * 1024 * 1024;
+
+/**
+ * Persists a data-URL upload. Media lives in Postgres (media_blobs) because
+ * serverless filesystems are ephemeral — files written to /tmp vanish between
+ * invocations, which is exactly why report photos went missing in production.
+ */
+export async function saveDataUrlMedia(dataUrl, relativePathPrefix) {
   if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) return { url: "", storagePath: "" };
   const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
   if (!match) throw new Error("invalid-media");
@@ -285,10 +300,67 @@ export function saveDataUrlMedia(dataUrl, relativePathPrefix) {
   const base64 = match[2];
   const ext = mimeType.includes("png") ? ".png" : mimeType.includes("webp") ? ".webp" : mimeType.includes("mp4") ? ".mp4" : ".jpg";
   const storagePath = `${relativePathPrefix}${ext}`;
-  const absolutePath = join(uploadsRoot, storagePath);
-  mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, Buffer.from(base64, "base64"));
-  return { url: `/uploads/${storagePath.replace(/\\/g, "/")}`, storagePath };
+  if (base64.length > MAX_BLOB_CHARS) {
+    console.warn(`[media] ${storagePath} too large to persist (${Math.round(base64.length / 1024)}KB base64) — skipping`);
+    return { url: "", storagePath };
+  }
+  try {
+    await query(
+      `INSERT INTO media_blobs (storage_path, mime_type, data_base64, byte_size)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (storage_path) DO UPDATE
+         SET mime_type = EXCLUDED.mime_type, data_base64 = EXCLUDED.data_base64, byte_size = EXCLUDED.byte_size`,
+      [storagePath, mimeType, base64, Buffer.byteLength(base64)]
+    );
+  } catch (err) {
+    console.error(`[media] DB persist failed for ${storagePath}:`, err?.message || err);
+    return { url: "", storagePath };
+  }
+  return { url: `/uploads/${storagePath}`, storagePath };
+}
+
+/** Reads a persisted media blob. Returns { mimeType, buffer } or null. */
+export async function readStoredMedia(storagePath) {
+  const res = await query("SELECT mime_type, data_base64 FROM media_blobs WHERE storage_path = $1", [storagePath]);
+  if (!res.rows.length) return null;
+  return { mimeType: res.rows[0].mime_type, buffer: Buffer.from(res.rows[0].data_base64, "base64") };
+}
+
+/**
+ * Streams an /uploads/* request: Postgres blobs first, legacy disk files
+ * second (local dev + anything written before this change). Returns false
+ * when nothing was served so callers can send their own 404.
+ */
+export async function serveStoredMedia(req, res, pathname) {
+  void req;
+  const relative = String(pathname).replace(/^\/uploads\//, "");
+  const safeRelative = normalize(relative).replace(/^(\.\.[/\\])+/, "");
+  try {
+    const blob = safeRelative ? await readStoredMedia(safeRelative) : null;
+    if (blob) {
+      res.writeHead(200, {
+        "Content-Type": blob.mimeType || "application/octet-stream",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(blob.buffer);
+      return true;
+    }
+  } catch { /* fall through to disk */ }
+  for (const root of [join(tmpdir(), "swachhlens-uploads"), join(__dirname, "uploads")]) {
+    const absolutePath = join(root, safeRelative);
+    if (!absolutePath.startsWith(root + sep)) continue;
+    try {
+      if (existsSync(absolutePath) && statSync(absolutePath).isFile()) {
+        res.writeHead(200, {
+          "Content-Type": MEDIA_MIME_BY_EXT[extname(absolutePath).toLowerCase()] || "application/octet-stream",
+          "Cache-Control": "public, max-age=3600",
+        });
+        createReadStream(absolutePath).pipe(res);
+        return true;
+      }
+    } catch { /* try next root */ }
+  }
+  return false;
 }
 
 export function cleanObject(value) {
