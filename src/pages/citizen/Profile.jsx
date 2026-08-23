@@ -9,6 +9,7 @@ import {
   Edit, Notifications, NotificationsOff, LocationOn, LocationOff, Lock, Help, Info,
   Logout, ChevronRight, Assignment, CheckCircle, PendingActions, Star, ListAlt, TrackChanges,
   Close, Save, Visibility, VisibilityOff, Shield, Engineering, Person, AdminPanelSettings, Translate,
+  LightMode, DarkMode,
 } from "@mui/icons-material";
 import BottomNav from "../../components/BottomNav.jsx";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
@@ -362,31 +363,31 @@ export default function Profile() {
 
           {/* Theme Switcher */}
           <SettingsRow
-            icon={<Box sx={{ display: 'flex', fontSize: 20, color: themeMode === 'dark' ? 'grey.400' : 'grey.700' }}>
-              {themeMode === 'dark' ? '🌙' : '☀️'}
-            </Box>}
+            icon={themeMode === 'dark'
+              ? <DarkMode sx={{ color: 'grey.400', fontSize: 20 }} />
+              : <LightMode sx={{ color: 'warning.main', fontSize: 20 }} />}
             iconColor={themeMode === 'dark' ? 'grey' : 'warning'}
             title="Appearance"
             subtitle={themeMode === 'dark' ? 'Dark mode active' : 'Light mode active'}
             action={
               <Box sx={{ display: 'flex', gap: 0, border: '1px solid', borderColor: 'grey.200', borderRadius: 2, p: 0.25 }}>
                 {[
-                  { key: 'light', icon: '☀️', tip: 'Light' },
-                  { key: 'dark', icon: '🌙', tip: 'Dark' },
-                ].map((opt) => (
+                  { key: 'light', Icon: LightMode, tip: 'Light' },
+                  { key: 'dark', Icon: DarkMode, tip: 'Dark' },
+                ].map(({ key: optKey, Icon: OptIcon, tip }) => (
                   <Box
-                    key={opt.key}
-                    onClick={() => setThemeMode(opt.key)}
-                    title={opt.tip}
+                    key={optKey}
+                    onClick={() => setThemeMode(optKey)}
+                    title={tip}
                     sx={{
                       width: 32, height: 28, borderRadius: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', fontSize: 14, transition: 'all 0.2s',
-                      bgcolor: themeMode === opt.key ? 'primary.main' : 'transparent',
-                      color: themeMode === opt.key ? 'white' : 'grey.500',
-                      '&:hover': { bgcolor: themeMode === opt.key ? 'primary.main' : 'grey.100' },
+                      cursor: 'pointer', transition: 'all 0.2s',
+                      bgcolor: themeMode === optKey ? 'primary.main' : 'transparent',
+                      color: themeMode === optKey ? 'white' : 'grey.500',
+                      '&:hover': { bgcolor: themeMode === optKey ? 'primary.main' : 'grey.100' },
                     }}
                   >
-                    {opt.icon}
+                    <OptIcon sx={{ fontSize: 15 }} />
                   </Box>
                 ))}
               </Box>

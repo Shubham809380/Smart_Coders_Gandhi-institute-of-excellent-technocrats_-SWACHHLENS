@@ -49,8 +49,9 @@ function AiCompare({ report, onAnalyzed }) {
             <p className="font-semibold">{wasteTypeLabel(analysis.wasteType)}</p>
             <p className="adm-muted capitalize">{analysis.severity} severity</p>
           </div>
-          <p className="col-span-2 font-semibold" style={{ color: analysis.severity === "low" ? "var(--adm-ok)" : "var(--adm-warn)" }}>
-            {analysis.severity === "low" ? "✓ Cleanup looks effective — safe to resolve." : "⚠ Residue may remain — inspect before resolving."}
+          <p className="col-span-2 font-semibold inline-flex items-center gap-1.5" style={{ color: analysis.severity === "low" ? "var(--adm-ok)" : "var(--adm-warn)" }}>
+            <Icon name={analysis.severity === "low" ? "check" : "alert"} size={13} />
+            {analysis.severity === "low" ? "Cleanup looks effective — safe to resolve." : "Residue may remain — inspect before resolving."}
           </p>
         </div>
       )}

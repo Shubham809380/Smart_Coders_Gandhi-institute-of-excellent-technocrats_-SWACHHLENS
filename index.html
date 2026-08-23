@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#047857" />
     <title>SwachhLens</title>
+    <script>
+      // Apply the saved theme before first paint (same key as ThemeContext)
+      // so no screen ever flashes the wrong theme on load or refresh.
+      (function () {
+        var mode = null;
+        try { mode = localStorage.getItem('swachhlens-theme'); } catch (e) {}
+        if (mode !== 'light' && mode !== 'dark') {
+          try {
+            mode = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          } catch (e) { mode = 'dark'; }
+        }
+        document.documentElement.setAttribute('data-theme', mode);
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
