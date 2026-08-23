@@ -66,21 +66,6 @@ function ProfilePage() {
   return role === "cleanup_worker" ? <WorkerProfile /> : <Profile />;
 }
 
-function LoadingFallback() {
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <img src={logo} alt="SwachhLens" className="w-16 h-16 object-contain" />
-        <div className="flex gap-2">
-          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const CITIZEN_ROLES = ["citizen"];
 const WORKER_ROLES = ["cleanup_worker"];
 const ADMIN_ROLES = ["admin", "super_admin", "ward_officer", "sanitation_supervisor"];
@@ -135,7 +120,7 @@ export default function App() {
   }
   return (
     <BrowserRouter>
-      <Suspense fallback={<LoadingFallback />}>
+      <Suspense fallback={null}>
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<SplashScreen />} />
