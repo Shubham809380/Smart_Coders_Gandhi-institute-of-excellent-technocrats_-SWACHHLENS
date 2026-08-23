@@ -419,7 +419,7 @@ export default function CaptureWaste() {
         </div>
       </main>
 
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleGallerySelect} />
+      <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/3gpp" className="hidden" onChange={handleGallerySelect} />
 
       {showManualLocation && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !location && setShowManualLocation(false)}>

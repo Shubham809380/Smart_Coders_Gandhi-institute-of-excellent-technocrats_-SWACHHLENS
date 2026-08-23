@@ -41,7 +41,7 @@
   "crons": [
     {
       "path": "/api/cron/escalate",
-      "schedule": "0 * * * *"
+      "schedule": "30 2 * * *"
     }
   ]
 }

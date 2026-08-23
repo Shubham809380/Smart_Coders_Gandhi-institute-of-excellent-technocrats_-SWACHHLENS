@@ -485,6 +485,9 @@ export const reportService = {
         }
         const data = await api("/reports", {
             method: "POST",
+            // Attached clips push the JSON payload into multi-MB territory on
+            // mobile data — give the submit the same slow lane as after-photos.
+            timeoutMs: payload.video ? 60000 : 30000,
             body: JSON.stringify({
                 image, video: payload.video || "",
                 aiResult: payload.aiResult,
