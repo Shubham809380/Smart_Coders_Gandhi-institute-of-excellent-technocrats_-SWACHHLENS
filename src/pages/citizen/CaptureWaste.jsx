@@ -317,6 +317,59 @@ export default function CaptureWaste() {
       </main>
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleGallerySelect} />
+
+      {showManualLocation && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !location && setShowManualLocation(false)}>
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 pb-safe shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-11 h-11 rounded-2xl bg-surface-container flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-[24px]">location_on</span>
+              </div>
+              <div>
+                <h3 className="text-[17px] font-bold text-on-surface">Set report location</h3>
+                <p className="text-[12px] text-on-surface-variant">GPS unavailable — enter coordinates manually.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[12px] font-bold text-[#515c71] uppercase tracking-wide">Latitude</span>
+                <input
+                  type="number" step="any" inputMode="decimal" value={manualLat}
+                  onChange={(e) => setManualLat(e.target.value)} placeholder="e.g. 20.2961"
+                  className="px-4 py-3 rounded-2xl bg-surface-container text-[15px] font-medium text-on-surface outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[12px] font-bold text-[#515c71] uppercase tracking-wide">Longitude</span>
+                <input
+                  type="number" step="any" inputMode="decimal" value={manualLng}
+                  onChange={(e) => setManualLng(e.target.value)} placeholder="e.g. 85.8245"
+                  className="px-4 py-3 rounded-2xl bg-surface-container text-[15px] font-medium text-on-surface outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
+            </div>
+            {manualError && <p className="text-[12px] font-semibold text-red-600 mt-2">{manualError}</p>}
+            <div className="flex items-center gap-3 mt-5">
+              {!location && (
+                <button
+                  onClick={getLocation}
+                  disabled={locationLoading}
+                  className="flex-1 bg-surface-container-high text-on-surface text-[14px] font-bold py-3.5 rounded-2xl active:bg-surface-variant transition-colors disabled:opacity-60"
+                >
+                  {locationLoading ? 'Detecting…' : 'Retry GPS'}
+                </button>
+              )}
+              <button
+                onClick={applyManualLocation}
+                className="flex-1 text-white text-[14px] font-bold py-3.5 rounded-2xl active:scale-[0.98] transition-transform"
+                style={{ background: 'linear-gradient(135deg, #006b2c, #06b6d4)' }}
+              >
+                Use this pin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
