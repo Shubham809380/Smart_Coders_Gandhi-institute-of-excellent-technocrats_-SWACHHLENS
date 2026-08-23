@@ -63,7 +63,9 @@ export default function AnalyzingWaste() {
   const [error, setError] = useState("");
   const [completed, setCompleted] = useState(false);
   const [rejected, setRejected] = useState(null);
-  const draft = reportService.getDraft();
+  // Snapshot once — getDraft() returns a fresh clone each call, and a new
+  // reference here would recreate runAnalysis and re-fire the effect loop.
+  const [draft] = useState(() => reportService.getDraft());
   const progress = completed ? 100 : Math.max(0, ((currentStep + 1) / STEPS.length) * 100);
   const runAnalysis = useCallback(async (cancelled) => {
     try {

@@ -601,7 +601,9 @@ export class OnnxAIProvider {
     const severityResult = ruleBasedSeverity(wasteType, volumeCategory, confidence * 100);
     const dispatch = recommendAction(wasteType, volumeCategory, severityResult.severity);
     const potentialRisk = RISK_MAP[wasteType] || "Area hygiene deterioration";
-    const needsReview = confidence < 0.3 || detectorMethod === "opencv_heuristic";
+    // Trust the CNN classifier verdict; only flag genuinely weak or
+    // heuristic-only (no classifier) results for human review.
+    const needsReview = !cls.checked || confidence < 0.35;
 
     const processingTime = (Date.now() - started) / 1000;
     console.log(`[AI:onnx] ${category} (${(confidence * 100).toFixed(1)}%) vol=${volumeCategory} ` +

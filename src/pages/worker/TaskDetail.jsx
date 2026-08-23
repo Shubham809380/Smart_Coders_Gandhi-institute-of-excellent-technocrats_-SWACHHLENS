@@ -3,10 +3,14 @@ import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { workerService, reportService } from "../../services.js";
 import { useLive } from "../../hooks/useLive.js";
 
+// Single brand accent across every action state — hue shifts per status
+// read as different flows; one identity keeps the CTA predictable.
+const BRAND_SHADOW = "0 6px 20px -4px rgba(0,107,44,0.4)";
+
 const statusAction = {
-  assigned: { label: "Accept Task", nextStatus: "en_route", color: "bg-green-600", shadow: "0 6px 20px -4px rgba(0,107,44,0.4)" },
-  en_route: { label: "Start Cleanup", nextStatus: "cleanup_in_progress", color: "bg-blue-600", shadow: "0 6px 20px -4px rgba(37,99,235,0.4)" },
-  cleanup_in_progress: { label: "Complete Cleanup", nextStatus: null, color: "bg-emerald-600", shadow: "0 6px 20px -4px rgba(5,150,105,0.4)" },
+  assigned: { label: "Accept Task", nextStatus: "en_route" },
+  en_route: { label: "Start Cleanup", nextStatus: "cleanup_in_progress" },
+  cleanup_in_progress: { label: "Complete Cleanup", nextStatus: null },
 };
 
 const issueOptions = [
@@ -130,7 +134,7 @@ export default function TaskDetail() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-32">
+      <div className="flex-1 overflow-y-auto pb-32 max-w-lg mx-auto w-full">
         {report.image ? (
           <div className="relative w-full aspect-video bg-gray-100">
             <img src={report.image} alt="" className="w-full h-full object-cover" />
@@ -238,13 +242,13 @@ export default function TaskDetail() {
         )}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-100 px-4 py-4 pb-[calc(env(safe-area-inset-bottom)+16px)] z-40">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white/95 backdrop-blur-xl border-t border-gray-100 px-4 py-4 pb-[calc(env(safe-area-inset-bottom)+16px)] z-40">
         {action && (
           <button
             onClick={handleAction}
             disabled={actionLoading}
             className="w-full h-16 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-60"
-            style={{ background: action.nextStatus ? undefined : "linear-gradient(135deg, #059669, #10b981)", boxShadow: action.shadow }}
+            style={{ background: "linear-gradient(135deg, #006b2c, #00a843)", boxShadow: BRAND_SHADOW }}
           >
             {actionLoading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -266,14 +270,14 @@ export default function TaskDetail() {
       </div>
 
       {toast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg z-50 text-sm font-bold animate-bounce max-w-[85vw]">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg z-50 text-sm font-bold max-w-[85vw]" style={{ animation: "toastIn 0.2s ease" }}>
           {toast}
         </div>
       )}
 
       {showIssueModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center">
-          <div className="bg-white rounded-t-3xl w-full max-w-lg p-6 pb-[calc(env(safe-area-inset-bottom)+24px)]">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center" onClick={() => setShowIssueModal(false)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-lg p-6 pb-[calc(env(safe-area-inset-bottom)+24px)]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-extrabold text-gray-900">Report Issue</h3>
               <button onClick={() => setShowIssueModal(false)} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
@@ -302,7 +306,8 @@ export default function TaskDetail() {
             <button
               onClick={handleReportIssue}
               disabled={(!issueReason || (issueReason === "Other" && !issueOtherText.trim())) || issueSubmitting}
-              className="w-full h-14 rounded-2xl bg-red-600 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-all active:scale-[0.98]"
+              className="w-full h-14 rounded-2xl text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-all active:scale-[0.98]"
+              style={{ background: "linear-gradient(135deg, #006b2c, #00a843)" }}
             >
               {issueSubmitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Submit Report"}
             </button>

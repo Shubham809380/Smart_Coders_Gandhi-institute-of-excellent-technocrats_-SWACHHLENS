@@ -17,6 +17,7 @@ export default function CompleteCleanup() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [verification, setVerification] = useState(null);
   const [disposal, setDisposal] = useState(null);
   const fileRef = useRef(null);
@@ -68,7 +69,10 @@ export default function CompleteCleanup() {
         actualVolume: volume,
       });
       setSubmitted(true);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      setSubmitError(e?.message || "Submission failed. Check your connection and try again.");
+    }
     setSubmitting(false);
   };
 
@@ -76,7 +80,8 @@ export default function CompleteCleanup() {
     const v = verification;
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
-        <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mb-6 animate-bounce">
+      <style>{`@keyframes ccPop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }`}</style>
+        <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mb-6" style={{ animation: "ccPop 0.45s cubic-bezier(0.22,1,0.36,1) both" }}>
           <span className="material-symbols-outlined text-emerald-600 text-[40px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
         </div>
         <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Cleanup Submitted!</h2>
@@ -150,7 +155,7 @@ export default function CompleteCleanup() {
               <button onClick={() => fileRef.current?.click()} className="w-full bg-white rounded-2xl border-2 border-dashed border-gray-300 p-12 text-center active:border-green-400 transition-colors">
                 <span className="material-symbols-outlined text-gray-300 block mx-auto mb-3" style={{ fontSize: "56px" }}>photo_camera</span>
                 <span className="text-base font-bold text-gray-700 block">Tap to Take Photo</span>
-                <span className="text-sm text-gray-400 mt-1 block">Camera only — no gallery upload</span>
+                <span className="text-sm text-gray-400 mt-1 block">Live photo preferred — clear proof of cleanup</span>
               </button>
             ) : (
               <div className="relative rounded-2xl overflow-hidden bg-gray-100 border border-gray-200">
@@ -251,11 +256,18 @@ export default function CompleteCleanup() {
 
             <div className="flex-1" />
 
+            {submitError && (
+              <div className="mb-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
+                <span className="material-symbols-outlined text-red-500 text-[18px] shrink-0 mt-0.5">error</span>
+                <p className="text-xs font-semibold text-red-700 leading-relaxed">{submitError}</p>
+              </div>
+            )}
+
             <div className="flex gap-3 mt-auto">
               <button onClick={() => setStep(2)} className="flex-1 h-14 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm flex items-center justify-center gap-1 active:bg-gray-200 transition-colors">
                 <span className="material-symbols-outlined text-[18px]">arrow_back</span> Back
               </button>
-              <button onClick={handleSubmit} disabled={submitting} className="flex-[2] h-14 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-60" style={{ background: "linear-gradient(135deg, #059669, #10b981)", boxShadow: "0 6px 20px -4px rgba(5,150,105,0.4)" }}>
+              <button onClick={handleSubmit} disabled={submitting} className="flex-[2] h-14 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-60" style={{ background: "linear-gradient(135deg, #006b2c, #00a843)", boxShadow: "0 6px 20px -4px rgba(0,107,44,0.4)" }}>
                 {submitting ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (

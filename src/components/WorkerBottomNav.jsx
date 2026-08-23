@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { authService } from "../services.js";
 
@@ -10,6 +11,7 @@ const navItems = [
 export default function WorkerBottomNav({ active }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [initial] = useState(() => authService.getSessionSnapshot().currentUser?.name?.charAt(0)?.toUpperCase() || "U");
 
   const currentActive = active || (() => {
     const path = location.pathname;
@@ -37,7 +39,7 @@ export default function WorkerBottomNav({ active }) {
                 <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-6 h-[3px] rounded-full bg-green-600" />
               )}
               <span
-                className={`material-symbols-outlined text-[26px] transition-all duration-200 ${isActive ? "text-green-600" : "text-gray-400 group-hover:text-gray-700"}`}
+                className={`material-symbols-outlined text-[24px] transition-all duration-200 ${isActive ? "text-green-600" : "text-gray-500 group-hover:text-gray-700"}`}
                 style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}
               >
                 {item.icon}
@@ -59,7 +61,7 @@ export default function WorkerBottomNav({ active }) {
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold"
             style={{ background: "linear-gradient(135deg, #006b2c, #00a843)" }}
           >
-            {authService.getSessionSnapshot().currentUser?.name?.charAt(0)?.toUpperCase() || "U"}
+            {initial}
           </div>
           <span className={`text-[11px] transition-all duration-200 ${currentActive === "profile" ? "text-gray-900 font-bold" : "text-gray-400 font-medium group-hover:text-gray-700"}`}>
             Profile

@@ -52,8 +52,8 @@ export default function WorkerMap() {
   const refreshAlertsRef = useRef(() => {});
 
   const T = isDark
-    ? { bg:'#0B1220', surface:'#161B26', border:'#232A3A', text:'#E8ECF1', muted:'#8791A3', accent:'#4C8DFF', tileUrl:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' }
-    : { bg:'#F5F7FA', surface:'#FFFFFF', border:'#E4E8EE', text:'#12151C', muted:'#5B6472', accent:'#2E6BD6', tileUrl:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' };
+    ? { bg:'#0B1220', surface:'#161B26', border:'#232A3A', text:'#E8ECF1', muted:'#8791A3', accent:'#34C77B', tileUrl:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' }
+    : { bg:'#F5F7FA', surface:'#FFFFFF', border:'#E4E8EE', text:'#12151C', muted:'#5B6472', accent:'#00a843', tileUrl:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' };
 
   const initMap = useCallback((center) => {
     if (mapInstance.current) {
@@ -204,7 +204,7 @@ export default function WorkerMap() {
               <span className="material-symbols-outlined text-[20px]" style={{ color:T.accent }}>map</span>
             </div>
             <div>
-              <h1 className="text-lg font-extrabold" style={{ fontFamily:'"Space Grotesk",sans-serif', color:T.text }}>Task Map</h1>
+              <h1 className="text-lg font-extrabold" style={{ color:T.text }}>Task Map</h1>
               <span className="text-xs font-bold" style={{ color:T.muted }}>{tasks.length} assigned tasks</span>
             </div>
           </div>

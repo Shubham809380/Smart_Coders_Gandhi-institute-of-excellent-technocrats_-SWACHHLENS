@@ -22,6 +22,13 @@ export default function WorkerProfile() {
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [dutyLoading, setDutyLoading] = useState(false);
+  const [toast, setToast] = useState("");
+  const [confirmLogout, setConfirmLogout] = useState(false);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 1800);
+  };
 
   useEffect(() => {
     async function loadWorker() {
@@ -103,7 +110,7 @@ export default function WorkerProfile() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background:T.bg, fontFamily:'"Inter",sans-serif', transition:'background-color 0.25s ease' }}>
+    <div className="min-h-screen flex flex-col max-w-lg mx-auto w-full" style={{ background:T.bg, transition:'background-color 0.25s ease' }}>
       <div className="flex-1 overflow-y-auto pb-24 px-4 pt-6">
 
         <div className="flex flex-col items-center mb-6">
@@ -111,19 +118,19 @@ export default function WorkerProfile() {
             style={{ background:'linear-gradient(135deg, #006b2c, #00a843)' }}>
             <span className="text-white text-3xl font-bold">{initial}</span>
           </div>
-          <h1 className="text-xl font-bold" style={{ fontFamily:'"Space Grotesk",sans-serif', color:T.text }}>{worker?.name || "Worker"}</h1>
+          <h1 className="text-xl font-extrabold" style={{ color:T.text }}>{worker?.name || "Worker"}</h1>
           <p className="text-sm mb-2" style={{ color:T.muted }}>{worker?.email || ""}</p>
           <span className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-4"
-            style={{ background:'rgba(52,199,123,0.12)', color:'#34C77B' }}>
+            style={{ background:'rgba(52,199,123,0.12)', color:isDark ? '#34C77B' : '#006b2c' }}>
             {worker?.role === 'cleanup_worker' ? 'Cleanup Worker' : worker?.role || 'Worker'}
           </span>
 
           <button
             onClick={handleDutyToggle}
             disabled={dutyLoading}
-            className="relative inline-flex h-14 w-56 items-center justify-center rounded-full transition-colors duration-200 font-semibold text-base shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2"
+            className="relative inline-flex h-14 w-56 items-center justify-center rounded-full transition-all duration-200 font-bold text-base shadow-md focus:outline-none"
             style={{
-              background: dutyStatus ? '#34C77B' : (isDark ? '#2a3550' : '#D1D5DB'),
+              background: dutyStatus ? 'linear-gradient(135deg, #006b2c, #00a843)' : (isDark ? '#2a3550' : '#E5E7EB'),
               color: dutyStatus ? '#fff' : (isDark ? '#8791A3' : '#6B7280'),
               opacity: dutyLoading ? 0.6 : 1,
               cursor: dutyLoading ? 'wait' : 'pointer',
@@ -144,7 +151,7 @@ export default function WorkerProfile() {
               <div className="rounded-full w-10 h-10 flex items-center justify-center mb-2" style={{ background:s.bg }}>
                 <MaterialIcon name={s.icon} className="text-xl" style={{ color:s.color }} />
               </div>
-              <span className="text-lg font-bold" style={{ color:T.text, fontFamily:'"JetBrains Mono",monospace' }}>{s.value}</span>
+              <span className="text-lg font-bold" style={{ color:T.text }}>{s.value}</span>
               <span className="text-xs text-center leading-tight" style={{ color:T.muted }}>{s.label}</span>
             </div>
           ))}
@@ -152,12 +159,12 @@ export default function WorkerProfile() {
 
         <div className="rounded-2xl overflow-hidden mb-6" style={{ background:T.surface, border:`1px solid ${T.border}` }}>
           {[
-            { icon:"notifications", label:"Notifications", color:T.muted, onClick:()=>{} },
-            { icon:"location_on", label:"Location Settings", color:T.muted, badge:"Active", onClick:()=>{} },
+            { icon:"notifications", label:"Notifications", color:T.muted, onClick:() => showToast("Coming soon") },
+            { icon:"location_on", label:"Location Settings", color:T.muted, badge:"Active", onClick:() => showToast("Location is active on duty") },
             { icon:"lock", label:"Change Password", color:T.muted, onClick:()=>setShowPasswordModal(true) },
-            { icon:"help", label:"Help & Support", color:T.muted, onClick:()=>{} },
-            { icon:"info", label:"About", color:T.muted, onClick:()=>{} },
-            { icon:"logout", label:"Logout", color:"#E5484D", onClick:handleLogout },
+            { icon:"help", label:"Help & Support", color:T.muted, onClick:() => showToast("Coming soon") },
+            { icon:"info", label:"About", color:T.muted, onClick:() => showToast("SwachhLens v1.0.0 · TechNova 2026") },
+            { icon:"logout", label:"Logout", color:"#E5484D", onClick:() => setConfirmLogout(true) },
           ].map((row, i, arr) => (
             <button
               key={row.label}
@@ -181,10 +188,29 @@ export default function WorkerProfile() {
 
       <WorkerBottomNav active="profile" />
 
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg z-50 max-w-[80vw] text-center" style={{ background:'#1F2937', animation:'toastIn 0.2s ease' }}>
+          {toast}
+        </div>
+      )}
+
+      {confirmLogout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background:'rgba(0,0,0,0.5)' }} onClick={() => setConfirmLogout(false)}>
+          <div className="rounded-2xl w-full max-w-xs p-5 shadow-2xl" style={{ background:T.surface }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-extrabold mb-1" style={{ color:T.text }}>Log out?</h3>
+            <p className="text-sm mb-4" style={{ color:T.muted }}>You'll stop receiving task updates until you sign back in.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmLogout(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold" style={{ border:`1px solid ${T.border}`, color:T.muted }}>Cancel</button>
+              <button onClick={handleLogout} className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold" style={{ background:'#E5484D' }}>Log out</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPasswordModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background:'rgba(0,0,0,0.5)' }}>
-          <div className="rounded-2xl w-full max-w-sm p-6 shadow-2xl" style={{ background:T.surface }}>
-            <h2 className="text-lg font-bold mb-4" style={{ fontFamily:'"Space Grotesk",sans-serif', color:T.text }}>Change Password</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background:'rgba(0,0,0,0.5)' }} onClick={closePasswordModal}>
+          <div className="rounded-2xl w-full max-w-sm p-6 shadow-2xl" style={{ background:T.surface }} onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-extrabold mb-4" style={{ color:T.text }}>Change Password</h2>
             {passwordError && <div className="text-sm rounded-lg px-3 py-2 mb-3" style={{ background:'rgba(229,72,77,0.1)', color:'#E5484D' }}>{passwordError}</div>}
             {passwordSuccess && <div className="text-sm rounded-lg px-3 py-2 mb-3" style={{ background:'rgba(52,199,123,0.1)', color:'#34C77B' }}>{passwordSuccess}</div>}
             <div className="space-y-3 mb-5">
@@ -205,7 +231,7 @@ export default function WorkerProfile() {
               <button onClick={closePasswordModal} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ border:`1px solid ${T.border}`, color:T.muted }}>Cancel</button>
               <button onClick={handlePasswordChange} disabled={passwordLoading}
                 className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
-                style={{ background:'#34C77B' }}>
+                style={{ background:'linear-gradient(135deg, #006b2c, #00a843)' }}>
                 {passwordLoading ? "Changing..." : "Change"}
               </button>
             </div>

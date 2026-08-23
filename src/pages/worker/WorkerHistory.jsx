@@ -53,12 +53,12 @@ export default function WorkerHistory() {
   const groups = groupByDate(tasks);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 pb-24 max-w-lg mx-auto">
       <div className="sticky top-0 z-40 bg-white shadow-sm">
-        <div className="px-4 pt-[env(safe-area-inset-top)] pb-3">
+        <div className="px-4 pt-[env(safe-area-inset-top)] pb-3 max-w-lg mx-auto">
           <div className="flex items-center gap-3 pt-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-              <span className="material-symbols-outlined text-purple-600 text-[20px]">history</span>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-emerald-600 text-[20px]">history</span>
             </div>
             <div>
               <h1 className="text-lg font-extrabold text-gray-900">History</h1>
@@ -68,9 +68,8 @@ export default function WorkerHistory() {
         </div>
       </div>
 
-      {tasks.length > 0 && (
-        <div className="px-4 mt-4 grid grid-cols-2 gap-3">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+      <div className="px-4 mt-4 grid grid-cols-2 gap-3">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
             <span className="text-lg font-extrabold text-emerald-600">{approved}</span>
             <span className="text-[10px] font-bold text-emerald-500 block mt-0.5">Approved</span>
           </div>
@@ -93,8 +92,7 @@ export default function WorkerHistory() {
             <span className="text-lg font-extrabold text-blue-600">{rate}%</span>
             <span className="text-[10px] font-bold text-blue-500 block mt-0.5">Approval Rate</span>
           </div>
-        </div>
-      )}
+      </div>
 
       <div className="px-4 mt-5">
         {loading ? (

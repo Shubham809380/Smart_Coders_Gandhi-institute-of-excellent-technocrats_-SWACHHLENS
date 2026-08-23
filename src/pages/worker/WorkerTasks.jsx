@@ -137,9 +137,9 @@ export default function WorkerTasks() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24" ref={containerRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <div className="min-h-screen bg-background pb-24 max-w-lg mx-auto" ref={containerRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <div className="bg-white shadow-sm sticky top-0 z-40">
-        <div className="px-4 pt-[env(safe-area-inset-top)] pb-3">
+        <div className="px-4 pt-[env(safe-area-inset-top)] pb-3 max-w-lg mx-auto">
           <div className="flex items-center justify-between pt-3">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: "linear-gradient(135deg, #006b2c, #00a843)" }}>
@@ -199,47 +199,65 @@ export default function WorkerTasks() {
         </button>
       )}
 
-      <div className="px-4 mt-4 flex gap-3 overflow-x-auto no-scrollbar">
-        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 min-w-[104px] flex flex-col items-center shrink-0">
-          <span className="text-2xl font-extrabold text-orange-600">{assigned}</span>
-          <span className="text-[11px] font-bold text-orange-500 mt-1">Assigned</span>
+      {refreshing && (
+        <div className="flex justify-center pt-3">
+          <span className="material-symbols-outlined text-primary text-[22px] animate-spin">progress_activity</span>
         </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 min-w-[104px] flex flex-col items-center shrink-0">
-          <span className="text-2xl font-extrabold text-blue-600">{inProgress}</span>
-          <span className="text-[11px] font-bold text-blue-500 mt-1">In Progress</span>
+      )}
+
+      <div className="max-w-lg mx-auto px-4 mt-4 flex gap-2.5 overflow-x-auto no-scrollbar">
+        <div className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-gray-100/80 p-3 min-w-[88px] flex-1 flex flex-col items-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center mb-1.5">
+            <span className="material-symbols-outlined text-orange-500 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>inbox</span>
+          </div>
+          <span className="text-lg font-extrabold text-gray-900">{assigned}</span>
+          <span className="text-[10px] font-bold text-gray-400 mt-0.5">Assigned</span>
         </div>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 min-w-[104px] flex flex-col items-center shrink-0">
-          <span className="text-2xl font-extrabold text-emerald-600">{completedToday}</span>
-          <span className="text-[11px] font-bold text-emerald-500 mt-1">Done Today</span>
+        <div className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-gray-100/80 p-3 min-w-[88px] flex-1 flex flex-col items-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center mb-1.5">
+            <span className="material-symbols-outlined text-blue-500 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>pending</span>
+          </div>
+          <span className="text-lg font-extrabold text-gray-900">{inProgress}</span>
+          <span className="text-[10px] font-bold text-gray-400 mt-0.5">In Progress</span>
         </div>
-        <div className={`rounded-2xl p-4 min-w-[104px] flex flex-col items-center shrink-0 border ${avgRating != null ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
+        <div className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-gray-100/80 p-3 min-w-[88px] flex-1 flex flex-col items-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center mb-1.5">
+            <span className="material-symbols-outlined text-emerald-500 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
+          </div>
+          <span className="text-lg font-extrabold text-gray-900">{completedToday}</span>
+          <span className="text-[10px] font-bold text-gray-400 mt-0.5">Done Today</span>
+        </div>
+        <div className={`rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border p-3 min-w-[88px] flex-1 flex flex-col items-center shrink-0 ${avgRating != null ? "bg-white border-gray-100/80" : "bg-white border-gray-100/80 opacity-70"}`}>
           {avgRating != null ? (
             <>
-              <span className="flex items-center gap-1">
-                <span className="material-symbols-outlined text-amber-500 text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
-                <span className="text-2xl font-extrabold text-amber-600">{avgRating}</span>
-              </span>
-              <span className="text-[11px] font-bold text-amber-500 mt-1">Citizen Rating</span>
+              <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center mb-1.5">
+                <span className="material-symbols-outlined text-amber-500 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+              </div>
+              <span className="text-lg font-extrabold text-gray-900">{avgRating}</span>
+              <span className="text-[10px] font-bold text-gray-400 mt-0.5">Rating</span>
             </>
           ) : (
             <>
-              <span className="material-symbols-outlined text-gray-300 text-[24px] mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>star_outline</span>
-              <span className="text-[11px] font-bold text-gray-400 mt-1">No Ratings Yet</span>
+              <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center mb-1.5">
+                <span className="material-symbols-outlined text-gray-300 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+              </div>
+              <span className="text-lg font-extrabold text-gray-300">—</span>
+              <span className="text-[10px] font-bold text-gray-400 mt-0.5">No Ratings</span>
             </>
           )}
         </div>
       </div>
 
-      <div className="px-4 mt-4 flex gap-2">
-        <button onClick={() => setSortBy("priority")} className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${sortBy === "priority" ? "bg-green-600 text-white shadow-md" : "bg-white text-gray-600 border border-gray-200"}`}>
+      <div className="max-w-lg mx-auto px-4 mt-4 flex gap-2">
+        <button onClick={() => setSortBy("priority")} style={sortBy === "priority" ? { background: "linear-gradient(135deg, #006b2c, #00a843)" } : undefined} className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${sortBy === "priority" ? "text-white shadow-md" : "bg-white text-gray-600 border border-gray-200"}`}>
           Priority First
         </button>
-        <button onClick={() => setSortBy("nearest")} className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${sortBy === "nearest" ? "bg-green-600 text-white shadow-md" : "bg-white text-gray-600 border border-gray-200"}`}>
+        <button onClick={() => setSortBy("nearest")} style={sortBy === "nearest" ? { background: "linear-gradient(135deg, #006b2c, #00a843)" } : undefined} className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${sortBy === "nearest" ? "text-white shadow-md" : "bg-white text-gray-600 border border-gray-200"}`}>
           Nearest First
         </button>
       </div>
 
-      <div className="px-4 mt-4 flex flex-col gap-3">
+      <div className="max-w-lg mx-auto px-4 mt-4 flex flex-col gap-3">
         {loading ? (
           <>
             <SkeletonCard />
