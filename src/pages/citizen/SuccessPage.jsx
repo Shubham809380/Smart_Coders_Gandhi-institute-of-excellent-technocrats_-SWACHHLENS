@@ -1,20 +1,69 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { reportService } from '../../services.js';
+import { useLive } from '../../hooks/useLive.js';
+
+// The six-step cleanup workflow, in order. `STAGE_ALIASES` maps every known
+// backend status to its stage; unknown statuses gracefully fall back to 0.
+const STAGES = [
+  { key: 'submitted', label: 'Submitted' },
+  { key: 'ai_analysis', label: 'AI Analysis' },
+  { key: 'team_dispatched', label: 'Team Dispatched' },
+  { key: 'en_route', label: 'En Route' },
+  { key: 'cleanup_in_progress', label: 'Cleanup in Progress' },
+  { key: 'resolved', label: 'Resolved' },
+];
+const STAGE_ALIASES = {
+  submitted: ['submitted', 'draft'],
+  ai_analysis: ['ai_analyzing', 'ai_analyzed', 'under_review'],
+  team_dispatched: ['assigned'],
+  en_route: ['en_route'],
+  cleanup_in_progress: ['cleanup_in_progress'],
+  resolved: ['resolved'],
+};
+const STATUS_TO_STAGE = {};
+Object.entries(STAGE_ALIASES).forEach(([stage, statuses]) => {
+  statuses.forEach((s) => { STATUS_TO_STAGE[s] = STAGES.findIndex((st) => st.key === stage); });
+});
+function getStageIndex(status) {
+  return STATUS_TO_STAGE[status] ?? 0;
+}
 
 export default function SuccessPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [copied, setCopied] = useState(false);
+  // Live cleanup status — single source of truth for the progress timeline.
+  const [status, setStatus] = useState('submitted');
 
-  const reportId = location.state?.reportId || 'SWL-00000';
+  // Accept the report id from navigation state (in-app taps); without one we
+  // stay on the initial state instead of fetching a placeholder id.
+  const rawReportId = location.state?.reportId || '';
+  const reportId = rawReportId || 'SWL-00000';
 
-  const stages = [
-    { label: 'Submitted', active: true },
-    { label: 'AI Analysis', active: false },
-    { label: 'Team Dispatched', active: false },
-    { label: 'Cleanup in Progress', active: false },
-    { label: 'Resolved', active: false },
-  ];
+  const fetchData = useCallback(async () => {
+    if (!rawReportId) return;
+    try {
+      const d = await reportService.getReportById(rawReportId);
+      if (d?.status) setStatus(d.status);
+    } catch { /* keep last known status — never crash the page */ }
+  }, [rawReportId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Realtime updates via the project's existing transport (Socket.IO push,
+  // SSE fallback, poll-only-while-disconnected resilience net). No fake timers.
+  useLive(
+    useCallback((evt, payload) => {
+      const pid = payload?.reportId || payload?.id;
+      if (pid && rawReportId && pid !== rawReportId) return;
+      fetchData();
+    }, [rawReportId, fetchData]),
+    ['waste:status:update', 'waste:updated', 'notification:new'],
+    { pollMs: 30000, poll: fetchData },
+  );
+
+  const currentIdx = getStageIndex(status);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(reportId).then(() => {
@@ -70,40 +119,51 @@ export default function SuccessPage() {
         <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <h2 className="text-base font-bold text-gray-900 mb-5">Report Progress</h2>
           <div className="flex flex-col">
-            {stages.map((stage, i) => {
-              const isLast = i === stages.length - 1;
-              const isCompleted = i === 0;
+            {STAGES.map((stage, i) => {
+              const isLast = i === STAGES.length - 1;
+              const isCompleted = i < currentIdx;
+              const isCurrent = i === currentIdx;
+              // Final step doubles as terminal: once reached it shows its check.
+              const showCheck = isCompleted || (isCurrent && isLast);
               return (
-                <div key={i} className="flex items-stretch gap-3">
+                <div key={stage.key} className="flex items-stretch gap-3">
                   <div className="flex flex-col items-center">
                     <div
                       className={`relative w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isCompleted
+                        showCheck
                           ? 'bg-green-500'
-                          : 'border-2 border-gray-300 bg-white'
+                          : isCurrent
+                            ? 'border-2 border-green-500 bg-white'
+                            : 'border-2 border-gray-300 bg-white'
                       }`}
                     >
-                      {isCompleted && (
+                      {showCheck && (
                         <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
                           check
                         </span>
                       )}
-                      {isCompleted && (
+                      {showCheck && (
                         <span className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-30" />
+                      )}
+                      {isCurrent && !showCheck && (
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                       )}
                     </div>
                     {!isLast && (
-                      <div className={`w-0.5 flex-1 min-h-[32px] ${isCompleted ? 'bg-green-500' : 'bg-gray-200'}`} />
+                      <div className={`w-0.5 flex-1 min-h-[32px] ${isCompleted ? 'bg-green-500' : isCurrent ? 'bg-green-500/40' : 'bg-gray-200'}`} />
                     )}
                   </div>
                   <div className={`pb-5 ${isLast ? 'pb-0' : ''}`}>
                     <p
                       className={`text-sm font-semibold ${
-                        isCompleted ? 'text-green-600' : 'text-gray-400'
+                        isCompleted || isCurrent ? 'text-green-600' : 'text-gray-400'
                       }`}
                     >
                       {stage.label}
                     </p>
+                    {isCurrent && (
+                      <p className="text-xs text-green-600 font-medium mt-0.5">Current step</p>
+                    )}
                   </div>
                 </div>
               );
