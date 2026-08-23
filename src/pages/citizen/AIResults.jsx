@@ -19,13 +19,31 @@ const WASTE_LABELS = {
   paper_waste: 'Paper Waste', cardboard_waste: 'Cardboard', metal_waste: 'Metal Waste',
   glass_waste: 'Glass Waste', textile_waste: 'Textile Waste', other: 'Mixed Waste',
 };
-const SEV = {
-  low:      { angle: 30,  label: 'Low Risk',    pct: 25 },
-  medium:   { angle: 90,  label: 'Medium Risk',  pct: 55 },
-  high:     { angle: 140, label: 'High Risk',    pct: 80 },
-  critical: { angle: 170, label: 'Critical',     pct: 95 },
-};
-const VOLUME_LABELS = { small: 'Small', medium: 'Medium', large: 'Large', very_large: 'Very Large' };
+// Dynamic risk/status/volume bands derived from the CURRENT waste measurement (%).
+function riskBandFor(pct) {
+  if (pct <= 30) return { level: 'low',      label: 'Low Risk',       volume: 'Small' };
+  if (pct <= 70) return { level: 'medium',   label: 'Medium Risk',    volume: 'Medium' };
+  if (pct <= 90) return { level: 'high',     label: 'High Risk',      volume: 'Large' };
+  return         { level: 'critical', label: 'Critical / Full', volume: 'Large' };
+}
+// Midpoint of each existing estimatedVolume category — only used as a fallback
+// when the live measurement (detectionSummary.coveragePercent) is unavailable.
+const EST_VOLUME_MID_PCT = { small: 15, medium: 50, large: 80, very_large: 95 };
+
+// SINGLE SOURCE OF TRUTH for the gauge: the current waste measurement.
+function resolveWastePercent(analysis) {
+  const ds = analysis.detectionSummary || {};
+  const candidates = [
+    ds.coveragePercent, ds.wasteLevel, ds.fillLevel,
+    analysis.wastePercentage, analysis.volumePercentage, analysis.fillLevel,
+    analysis.volumeScore, EST_VOLUME_MID_PCT[analysis.estimatedVolume],
+  ];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n)) return Math.max(0, Math.min(100, n));
+  }
+  return 0;
+}
 
 const rm = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -84,9 +102,8 @@ export default function AIResults() {
   const wasteLabel = analysis.needsReview ? 'Needs Review' : (WASTE_LABELS[analysis.wasteType] || 'Unknown Waste');
   const wasteIcon = WASTE_ICONS[analysis.wasteType] || 'category';
   const confidence = analysis.confidence || 0;
-  const severity = analysis.severity || 'medium';
-  const sevDef = SEV[severity] || SEV.medium;
-  const volumeLabel = VOLUME_LABELS[analysis.estimatedVolume] || String(analysis.estimatedVolume || '').replace('_', ' ');
+  const wastePercent = resolveWastePercent(analysis);
+  const band = riskBandFor(wastePercent);
   const risks = analysis.potentialRisks?.length ? analysis.potentialRisks : (analysis.potentialRisk ? [analysis.potentialRisk] : []);
   const lat = reportData.location?.latitude || 20.2961;
   const lng = reportData.location?.longitude || 85.8245;
@@ -113,7 +130,7 @@ export default function AIResults() {
         sevLow:'#34C77B', sevMed:'#F5A623', sevHigh:'#E5484D', gridColor:'rgba(76,141,255,0.04)' }
     : { canvas:'#F5F7FA', surface:'#FFFFFF', glass:'rgba(255,255,255,0.75)', border:'#E4E8EE', text:'#12151C', muted:'#5B6472', accent:'#2E6BD6',
         sevLow:'#1FAE66', sevMed:'#D98A0E', sevHigh:'#D6393E', gridColor:'rgba(46,107,214,0.04)' };
-  const sevColor = severity === 'low' ? T.sevLow : severity === 'medium' ? T.sevMed : T.sevHigh;
+  const sevColor = band.level === 'low' ? T.sevLow : band.level === 'medium' ? T.sevMed : T.sevHigh;
 
   return (
     <Box sx={{ minHeight:'100vh', bgcolor:T.canvas, display:'flex', flexDirection:'column', fontFamily:'"Inter",sans-serif',
@@ -198,11 +215,11 @@ export default function AIResults() {
 
           {/* ─── Severity Dial ─── */}
           <Box sx={{ textAlign:'center', py:2, animation: rm ? 'none' : `${fadeIn} 0.6s ease 0.1s both` }}>
-            <SeverityDial severity={severity} animate={phase !== 'scan'} isDark={isDark} sevColor={sevColor} />
+            <SeverityDial percent={wastePercent} animate={phase !== 'scan'} isDark={isDark} sevColor={sevColor} />
             <span style={{ fontFamily:'"Space Grotesk",sans-serif', fontWeight:700, fontSize:22, color:sevColor, display:'block', mt:1.5,
-              textShadow: isDark ? `0 0 20px ${sevColor}40` : 'none' }}>{sevDef.label}</span>
+              textShadow: isDark ? `0 0 20px ${sevColor}40` : 'none' }}>{band.label}</span>
             <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:11, color:T.muted, display:'block', mt:0.5 }}>
-              Confidence: {confidence}% · Volume: {volumeLabel}
+              Confidence: {confidence}% · Volume: {band.volume}
             </span>
           </Box>
 
@@ -395,12 +412,14 @@ export default function AIResults() {
 
 /* ─── Sub-components ─── */
 
-function SeverityDial({ severity, animate, isDark, sevColor }) {
-  const sevDef = SEV[severity] || SEV.medium;
+function SeverityDial({ percent, animate, isDark, sevColor }) {
+  const pct = Math.max(0, Math.min(100, Number(percent) || 0));
   const r = 52;
   const circ = Math.PI * r;
-  const filled = (sevDef.pct / 100) * circ;
-  const needleAngle = -90 + sevDef.angle;
+  // Arc fill and needle are exact linear mappings of the current waste measurement:
+  // 0% -> needle at left tick, 100% -> needle at right tick.
+  const filled = (pct / 100) * circ;
+  const needleAngle = -90 + (pct / 100) * 180;
 
   return (
     <Box sx={{ position:'relative', width:160, height:100, mx:'auto' }}>
@@ -443,6 +462,11 @@ function SeverityDial({ severity, animate, isDark, sevColor }) {
           <circle cx="80" cy="90" r="5" fill={sevColor} />
           <circle cx="80" cy="90" r="2.5" fill={isDark ? '#0B1220' : '#F5F7FA'} />
         </g>
+        {/* Live waste measurement readout */}
+        <text x="80" y="76" textAnchor="middle" dominantBaseline="middle" fontSize="16" fontWeight="700"
+          fontFamily='"JetBrains Mono",monospace' fill={isDark ? '#E8ECF1' : '#12151C'}>
+          <CounterValue target={pct} animate={animate} />%
+        </text>
       </svg>
     </Box>
   );
