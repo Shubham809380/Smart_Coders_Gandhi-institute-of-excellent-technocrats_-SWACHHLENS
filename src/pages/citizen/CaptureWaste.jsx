@@ -137,7 +137,8 @@ export default function CaptureWaste() {
     if (!location) return;
     await reportService.updateDraft({
       image: preview,
-      mediaType: 'image',
+      video: videoClip || '',
+      mediaType: videoClip ? 'video' : 'image',
       location: {
         latitude: location.latitude,
         longitude: location.longitude,
@@ -295,7 +296,19 @@ export default function CaptureWaste() {
 
         <div className="relative flex-1 mx-4 mb-4 rounded-3xl overflow-hidden bg-black shadow-lg min-h-[320px]" style={{ boxShadow: '0 12px 40px -8px rgba(0,0,0,0.25)' }}>
           {preview ? (
-            <img className="absolute inset-0 w-full h-full object-cover" src={preview} alt="Captured waste" />
+            <>
+              {videoClip ? (
+                <video className="absolute inset-0 w-full h-full object-contain bg-black" src={videoClip} controls playsInline />
+              ) : (
+                <img className="absolute inset-0 w-full h-full object-cover" src={preview} alt="Captured waste" />
+              )}
+              {videoClip && (
+                <span className="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-black/55 backdrop-blur-md px-2.5 py-1 rounded-full text-[11px] font-bold text-white">
+                  <span className="material-symbols-outlined text-[13px]">videocam</span>
+                  Video attached
+                </span>
+              )}
+            </>
           ) : (
             <>
               <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
