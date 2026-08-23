@@ -159,7 +159,7 @@ export default function SignUpPage() {
       setLoading(true);
       setError("");
       try {
-        const selectedRole = role === "worker" ? "cleanup_worker" : role === "admin" ? "admin" : "citizen";
+        const selectedRole = role === "worker" ? "cleanup_worker" : "citizen";
         const snapshot = await authService.googleLogin(tokenResponse.access_token, selectedRole);
         const route = snapshot.role === "cleanup_worker" ? "/worker/home" : snapshot.role !== "citizen" ? "/admin/dashboard" : "/home";
         navigate(route);
@@ -185,7 +185,7 @@ export default function SignUpPage() {
     setLoading(true);
     setError("");
     try {
-      const selectedRole = role === "worker" ? "cleanup_worker" : role === "admin" ? "admin" : "citizen";
+      const selectedRole = role === "worker" ? "cleanup_worker" : "citizen";
       const snapshot = await authService.signup({ name, email, password, phone: "", role: selectedRole, termsAccepted: true });
       const route = snapshot.role === "cleanup_worker" ? "/worker/home" : snapshot.role !== "citizen" ? "/admin/dashboard" : "/home";
       navigate(route);
@@ -506,36 +506,6 @@ export default function SignUpPage() {
                     </span>
                     <span className="text-xs text-on-surface-variant text-center leading-tight" style={{ fontFamily: "Manrope" }}>
                       Manage tasks & cleanup operations
-                    </span>
-                  </button>
-
-                  {/* Admin Card */}
-                  <button
-                    type="button"
-                    onClick={function () { setRole("admin"); }}
-                    className={
-                      "flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer hover:scale-[1.02] " +
-                      (role === "admin"
-                        ? "border-primary bg-primary-container/10"
-                        : "border-outline-variant bg-surface-container")
-                    }
-                  >
-                    <div
-                      className={
-                        "w-10 h-10 rounded-full flex items-center justify-center transition-colors duration-200 " +
-                        (role === "admin" ? "bg-primary text-on-primary" : "bg-surface-container-high text-on-surface-variant")
-                      }
-                    >
-                      <span className="material-symbols-outlined text-[20px]">admin_panel_settings</span>
-                    </div>
-                    <span
-                      className="text-sm font-bold"
-                      style={{ fontFamily: "Manrope", color: role === "admin" ? "#006b2c" : "#191c1e" }}
-                    >
-                      Admin
-                    </span>
-                    <span className="text-xs text-on-surface-variant text-center leading-tight" style={{ fontFamily: "Manrope" }}>
-                      Manage system & analytics
                     </span>
                   </button>
                 </div>
