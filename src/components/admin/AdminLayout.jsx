@@ -37,6 +37,12 @@ const NAV_SECTIONS = [
       { to: "/admin/analytics", icon: "chart", labelKey: "adminAnalytics" },
     ],
   },
+  {
+    labelKey: "secSettings",
+    items: [
+      { to: "/admin/settings", icon: "settings", labelKey: "adminSettings" },
+    ],
+  },
 ];
 
 const PAGE_TITLES = Object.fromEntries(

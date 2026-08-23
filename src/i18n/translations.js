@@ -169,6 +169,8 @@ const en = {
   secQuality: "Quality",
   secResources: "Resources",
   secInsights: "Insights",
+  secSettings: "Settings",
+  adminSettings: "Settings",
   complaintDetail: "Complaint Detail",
   adminConsole: "Admin Console",
   peopleActiveNow: "Active Now",
