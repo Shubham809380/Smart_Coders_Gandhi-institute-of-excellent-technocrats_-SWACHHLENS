@@ -1,6 +1,16 @@
 import { appConfig } from "../config.js";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
+
+function onnxCheckpointExists() {
+  const candidates = [
+    path.join(process.cwd(), "swachhlens-ai", "checkpoints"),
+    path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "swachhlens-ai", "checkpoints"),
+  ];
+  return candidates.some((dir) => existsSync(path.join(dir, "best_classifier.onnx")));
+}
 
 class AIProvider {
   async analyzeWaste() { throw new Error("AI provider not implemented."); }
@@ -250,7 +260,20 @@ function buildAnalysisFromPredictions(result) {
 export { MockAIProvider };
 
 export function getAIProvider() {
-  const mode = appConfig.aiProvider;
+  let mode = String(appConfig.aiProvider || "").toLowerCase();
+  // Fail-safe: an unset/unknown AI_PROVIDER must never silently downgrade the
+  // whole product to mock results. Prefer the bundled ONNX pipeline when the
+  // trained model ships with the deployment; mock only as last resort.
+  const onnxAvailable = onnxCheckpointExists();
+  if (!["onnx", "python", "real", "mock"].includes(mode)) {
+    if (onnxAvailable) {
+      console.warn(`[AI] AI_PROVIDER="${mode || "(unset)"}" not recognised — using bundled ONNX model.`);
+      mode = "onnx";
+    } else {
+      console.warn(`[AI] AI_PROVIDER="${mode || "(unset)"}" not recognised — falling back to mock (no ONNX checkpoint found).`);
+      mode = "mock";
+    }
+  }
   if (mode === "onnx") {
     // Lazy import keeps onnxruntime-node/sharp out of the mock-mode cold path.
     return { analyzeWaste: async (payload) => {

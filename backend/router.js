@@ -307,7 +307,8 @@ function clientIp(req) {
 }
 
 if (process.env.NODE_ENV !== "test") {
-  console.log(`[AI] provider: ${getAIProvider().constructor?.name || "unknown"} | AI_PROVIDER=${process.env.AI_PROVIDER || "(default)"}`);
+  const configured = String(process.env.AI_PROVIDER || "").toLowerCase();
+  console.log(`[AI] AI_PROVIDER=${configured || "(unset)"} | Gemini gatekeeper=${process.env.GEMINI_API_KEY ? "on" : "off"} | Web push=${process.env.VAPID_PUBLIC_KEY ? "on" : "off"}`);
 }
 
 export async function handleApiRequest(req, res) {
