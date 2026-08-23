@@ -26,6 +26,8 @@ env/
 swachhlens-ai/checkpoints/**
 # ...except the small CNN classifier artifacts required by the deployed service
 !swachhlens-ai/checkpoints/best_classifier.pth
+!swachhlens-ai/checkpoints/best_classifier.onnx
+!swachhlens-ai/checkpoints/onnx_meta.json
 !swachhlens-ai/checkpoints/thresholds.json
 !swachhlens-ai/checkpoints/eval_report.json
 !swachhlens-ai/checkpoints/training_summary.json

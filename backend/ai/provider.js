@@ -251,6 +251,13 @@ export { MockAIProvider };
 
 export function getAIProvider() {
   const mode = appConfig.aiProvider;
+  if (mode === "onnx") {
+    // Lazy import keeps onnxruntime-node/sharp out of the mock-mode cold path.
+    return { analyzeWaste: async (payload) => {
+      const { OnnxAIProviderWithFallback } = await import("./onnxProvider.js");
+      return new OnnxAIProviderWithFallback().analyzeWaste(payload);
+    } };
+  }
   if (mode === "python") return new PythonAIProviderWithFallback();
   if (mode === "real") return new RealAIProvider();
   return new MockAIProvider();

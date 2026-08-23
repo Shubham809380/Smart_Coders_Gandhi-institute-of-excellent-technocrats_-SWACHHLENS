@@ -1,0 +1,29 @@
+{
+  "arch": "efficientnet_b0",
+  "img_size": 192,
+  "classes": [
+    "plastic",
+    "paper",
+    "cardboard",
+    "metal",
+    "glass",
+    "organic",
+    "vegetation",
+    "textile",
+    "battery",
+    "mixed_trash"
+  ],
+  "op_map": {
+    "plastic": "plastic_waste",
+    "paper": "paper_waste",
+    "cardboard": "cardboard_waste",
+    "metal": "metal_waste",
+    "glass": "glass_waste",
+    "organic": "organic_waste",
+    "vegetation": "organic_waste",
+    "textile": "textile_waste",
+    "battery": "hazardous_waste",
+    "mixed_trash": "garbage_dump"
+  },
+  "val_macro_f1": 0.8916
+}

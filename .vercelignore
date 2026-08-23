@@ -1,9 +1,4 @@
 node_modules
-swachhlens-ai/checkpoints
-swachhlens-ai/training/images
-swachhlens-ai/training/labels
-swachhlens-ai/training/runs
-swachhlens-ai
 dist
 *.pyc
 __pycache__
@@ -13,3 +8,14 @@ __pycache__
 .vscode
 .idea
 *.log
+
+# ML training datasets & artifacts - not needed at runtime.
+# Runtime AI assets ship separately via vercel.json includeFiles:
+#   swachhlens-ai/checkpoints/{best_classifier.onnx,onnx_meta.json,thresholds.json}
+realwaste-main
+garbage_classification
+swachhlens-ai/yolo11m.pt
+swachhlens-ai/checkpoints/best_classifier.pth
+swachhlens-ai/checkpoints/eval_report.json
+swachhlens-ai/checkpoints/training_summary.json
+swachhlens-ai/training
