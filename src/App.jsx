@@ -112,11 +112,19 @@ export default function App() {
   if (!ready) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        {slowBoot && (
-          <p className="text-xs text-gray-400 text-center max-w-[240px]" style={{ fontFamily: "Manrope" }}>
-            Taking longer than usual — the server may be waking up. Retrying automatically…
-          </p>
-        )}
+        <div className="flex flex-col items-center gap-4">
+          <img src={logo} alt="SwachhLens" className="w-16 h-16 object-contain" />
+          <div className="flex gap-2">
+            <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+            <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+            <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+          </div>
+          {slowBoot && (
+            <p className="text-xs text-gray-400 text-center max-w-[240px]" style={{ fontFamily: "Manrope" }}>
+              Taking longer than usual — the server may be waking up. Retrying automatically…
+            </p>
+          )}
+        </div>
       </div>
     );
   }
