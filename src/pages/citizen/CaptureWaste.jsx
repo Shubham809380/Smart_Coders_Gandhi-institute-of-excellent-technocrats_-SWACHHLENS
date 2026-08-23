@@ -16,6 +16,8 @@ export default function CaptureWaste() {
   const [manualError, setManualError] = useState('');
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
+  // Video uploads: the poster frame feeds the AI, the clip rides along to the report.
+  const [videoClip, setVideoClip] = useState('');
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -29,6 +31,8 @@ export default function CaptureWaste() {
   }, []);
 
   const startCamera = async () => {
+    // A fresh stream always starts with the torch off — keep the button honest.
+    setTorchOn(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -42,9 +46,11 @@ export default function CaptureWaste() {
       const track = stream.getVideoTracks?.()[0];
       if (track && typeof track.getCapabilities === 'function' && track.getCapabilities().torch) {
         setTorchSupported(true);
+      } else {
+        setTorchSupported(false);
       }
     } catch {
-      setCameraError('Camera access denied. Use gallery to upload a photo.');
+      setCameraError('Camera access denied. Use gallery to upload a photo or a short video.');
     }
   };
 
