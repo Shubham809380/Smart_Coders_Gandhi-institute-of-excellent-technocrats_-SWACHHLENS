@@ -1,0 +1,15 @@
+# Slim runtime deps for the Render free-tier deploy (512MB RAM).
+# Heavy optional stacks (ultralytics, transformers/CLIP, SAM, xgboost) are
+# excluded — all of them are flag-gated off and fall back to heuristics.
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+pillow==11.0.0
+numpy==2.2.6
+opencv-python-headless==4.10.0.84
+scikit-learn==1.8.0
+geopy==2.4.1
+shapely==2.0.5
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.10.0+cpu
+torchvision==0.25.0+cpu

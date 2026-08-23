@@ -1,0 +1,10 @@
+# Keep the Render docker build context small: weights for disabled models,
+# training datasets and logs never ship to production.
+yolo11m.pt
+training/cifar10/
+training/*.log
+training/data/
+__pycache__/
+*.pyc
+.env
+.venv/
