@@ -572,6 +572,12 @@ export const teamService = {
         await api("/teams/assign", { method: "POST", body: JSON.stringify({ reportId, teamId }) });
         return { success: true };
     },
+    // Fleet-aware AI ranking from the backend (ward fit, availability,
+    // vehicle capability vs volume, live workload, proximity).
+    async getDispatchSuggestions(reportId) {
+        const data = await api(`/admin/complaints/${encodeURIComponent(reportId)}/dispatch-suggest`);
+        return data.suggestions || [];
+    },
 };
 
 export const notificationService = {

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '../../components/AdminSidebar.jsx';
 import { adminService, teamService } from '../../services.js';
 
