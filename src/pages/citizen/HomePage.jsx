@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/BottomNav.jsx";
 import { reportService, authService, notificationService } from "../../services.js";
+import { formatWasteType } from "../../utils/helpers.js";
 import { useLive } from "../../hooks/useLive.js";
 import { useLanguage } from "../../contexts/LanguageContext.jsx";
 
@@ -170,6 +171,12 @@ export default function HomePage() {
     h >= 12 && h < 17 ? t("greetingAfternoon") :
     h >= 17 && h < 21 ? t("greetingEvening") :
     t("greetingNight");
+  // Slot-matching icon from the icon library (replaces the old raw emoji).
+  const greetingIcon =
+    h >= 5 && h < 12 ? "light_mode" :
+    h >= 12 && h < 17 ? "wb_sunny" :
+    h >= 17 && h < 21 ? "wb_twilight" :
+    "bedtime";
   const userName = currentUser?.name?.split(" ")[0] || "there";
 
   const recentReports = reports.slice(0, 5);
@@ -212,8 +219,8 @@ export default function HomePage() {
                 <h1 className="text-[22px] font-extrabold text-gray-900 tracking-tight">
                   {greeting}
                 </h1>
-                <span className="text-[22px]" role="img" aria-label="wave">
-                  {(h >= 5 && h < 12) ? "\u{1F31E}" : (h >= 12 && h < 17) ? "\u{2600}\u{FE0F}" : (h >= 17 && h < 21) ? "\u{1F305}" : "\u{1F319}"}
+                <span className="material-symbols-outlined text-[22px] text-amber-500" role="img" aria-label="time of day">
+                  {greetingIcon}
                 </span>
               </div>
               <p className="text-[13px] text-on-surface-variant font-medium">
@@ -380,7 +387,7 @@ export default function HomePage() {
                       <div className="p-3 flex flex-col gap-1.5">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[12px] font-bold text-gray-900 truncate">
-                            {report.wasteType?.replace(/_/g, " ") || "Waste"}
+                            {formatWasteType(report.wasteType)}
                           </span>
                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${st.bg} ${st.text} border ${st.border}`}>
                             {st.label}
@@ -451,7 +458,7 @@ export default function HomePage() {
                     </div>
                     <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                       <span className="text-[14px] font-bold text-gray-900 truncate capitalize">
-                        {report.wasteType?.replace(/_/g, " ") || "Waste Report"}
+                        {formatWasteType(report.wasteType)}
                       </span>
                       <div className="flex items-center gap-1 text-gray-400">
                         <span className="material-symbols-outlined text-[13px]">location_on</span>

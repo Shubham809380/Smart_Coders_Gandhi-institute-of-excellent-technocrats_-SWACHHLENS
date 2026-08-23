@@ -19,3 +19,25 @@ export function timeSince(ts) {
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
 }
+
+// Human-readable waste classification: "mixed_trash"/"other" → "Mixed Waste",
+// "plastic_waste" → "Plastic Waste", etc.
+export function formatWasteType(wasteType) {
+  const raw = String(wasteType || '').replace(/_/g, ' ').trim();
+  if (!raw) return 'Waste';
+  if (raw.toLowerCase() === 'other') return 'Mixed Waste';
+  return raw.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Full date/time for a timestamp, e.g. "23 Aug 2026, 04:12 pm".
+export function formatDateTime(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+  } catch {
+    return '';
+  }
+}

@@ -23,7 +23,7 @@
     "vegetation": "organic_waste",
     "textile": "textile_waste",
     "battery": "hazardous_waste",
-    "mixed_trash": "garbage_dump"
+    "mixed_trash": "other"
   },
   "val_macro_f1": 0.8916
 }

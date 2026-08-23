@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/BottomNav.jsx";
 import { reportService, popSessionExpired } from "../../services.js";
+import { formatWasteType } from "../../utils/helpers.js";
 import { useLanguage } from "../../contexts/LanguageContext.jsx";
 
 const SEVERITY_COLORS = {
@@ -214,7 +215,7 @@ export default function MyReports() {
                       </span>
                     </div>
                     <h4 className="text-[14px] font-bold text-gray-900 truncate">
-                      {(r.wasteType || "Waste Report").replace(/_/g, " ")}
+                        {formatWasteType(r.wasteType)}
                     </h4>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[11px] text-gray-500 font-medium flex items-center gap-0.5">
@@ -269,7 +270,7 @@ export default function MyReports() {
               </button>
             </div>
             <p className="text-sm text-gray-500 mb-3">
-              {(editModal.wasteType || "Report").replace(/_/g, " ")} - {editModal.id}
+                        {formatWasteType(editModal.wasteType)} - {editModal.id}
             </p>
             <textarea
               value={editComment}

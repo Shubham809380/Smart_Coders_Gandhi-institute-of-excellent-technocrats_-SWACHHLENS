@@ -165,7 +165,7 @@ export async function classifyBuffer(imageBuffer) {
       checked: true,
       is_waste: accepted,
       category,
-      wasteType: accepted ? (st.meta.op_map[category] || "garbage_dump") : "unknown",
+      wasteType: accepted ? (st.meta.op_map[category] || "other") : "unknown",
       confidence: Math.round(bestP * 1000) / 10,
       status: accepted ? "accepted" : "rejected",
       rejection_reason: accepted ? null : bestP < ct ? "low_confidence" : "ambiguous_margin",

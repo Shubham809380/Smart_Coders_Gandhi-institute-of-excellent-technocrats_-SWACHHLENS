@@ -50,6 +50,12 @@ const BIN_MAP = {
     color: "#B45309",
     handling: "Collected silt goes to debris/silt yard, not to household bins.",
   },
+  other: {
+    bin: "blue",
+    binLabel: "Blue Bin — Mixed Waste",
+    color: "#2563EB",
+    handling: "Mixed waste. Segregate recyclables to blue; residual fraction to green/black at transfer station.",
+  },
 };
 
 export function getBinGuidance(wasteType) {

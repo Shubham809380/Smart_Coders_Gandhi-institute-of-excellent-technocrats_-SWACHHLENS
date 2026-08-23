@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import BottomNav from '../../components/BottomNav.jsx';
 import GoogleMap, { DEFAULT_CENTER, SEVERITY_COLORS } from '../../components/GoogleMap.jsx';
 import { reportService, vehicleService } from '../../services.js';
+import { formatWasteType } from '../../utils/helpers.js';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -154,7 +155,7 @@ export default function ExploreMap() {
         lat: r.latitude,
         lng: r.longitude,
         severity: r.severity,
-        label: r.wasteType?.replace(/_/g, ' ') || 'Waste Report',
+        label: formatWasteType(r.wasteType),
         id: r.id,
       }));
   }, [filteredReports]);
@@ -420,7 +421,7 @@ export default function ExploreMap() {
                   </span>
                 </div>
                 <h4 className="text-[14px] font-bold text-gray-900 truncate">
-                  {(report.wasteType || 'Waste Report').replace(/_/g, ' ')}
+                  {formatWasteType(report.wasteType)}
                 </h4>
                 <div className="flex items-center gap-3 mt-0.5">
                   {distKm != null && (
@@ -527,7 +528,7 @@ export default function ExploreMap() {
                         </span>
                       </div>
                       <h4 className="text-[14px] font-bold text-gray-900 truncate">
-                        {(r.wasteType || 'Waste Report').replace(/_/g, ' ')}
+                        {formatWasteType(r.wasteType)}
                       </h4>
                       <div className="flex items-center gap-3 mt-0.5">
                         {dist != null && (

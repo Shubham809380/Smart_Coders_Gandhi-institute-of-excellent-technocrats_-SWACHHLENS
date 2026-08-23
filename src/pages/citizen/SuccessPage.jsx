@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { reportService } from '../../services.js';
 import { useLive } from '../../hooks/useLive.js';
+import { formatDateTime } from '../../utils/helpers.js';
 
 // The six-step cleanup workflow, in order. `STAGE_ALIASES` maps every known
 // backend status to its stage; unknown statuses gracefully fall back to 0.
@@ -35,6 +36,7 @@ export default function SuccessPage() {
   const [copied, setCopied] = useState(false);
   // Live cleanup status — single source of truth for the progress timeline.
   const [status, setStatus] = useState('submitted');
+  const [report, setReport] = useState(null);
 
   // Accept the report id from navigation state (in-app taps); without one we
   // stay on the initial state instead of fetching a placeholder id.
@@ -45,7 +47,10 @@ export default function SuccessPage() {
     if (!rawReportId) return;
     try {
       const d = await reportService.getReportById(rawReportId);
-      if (d?.status) setStatus(d.status);
+      if (d) {
+        setReport(d);
+        if (d.status) setStatus(d.status);
+      }
     } catch { /* keep last known status — never crash the page */ }
   }, [rawReportId]);
 
@@ -99,6 +104,11 @@ export default function SuccessPage() {
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-400 font-medium">Report ID</p>
             <p className="text-sm font-bold text-gray-900 font-mono tracking-wide truncate">{reportId}</p>
+            {report?.createdAt && (
+              <p className="text-[11px] text-gray-400 font-medium mt-0.5">
+                Uploaded {formatDateTime(report.createdAt)}
+              </p>
+            )}
           </div>
           <button
             onClick={copyToClipboard}
