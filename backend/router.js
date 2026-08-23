@@ -354,8 +354,11 @@ export async function handleApiRequest(req, res) {
         const { passwordHash, salt } = await createPasswordHash("google-oauth-" + uid);
         user = await store.createUser({ uid, name, email, phone: "", passwordHash, salt, role: requestedRole, photoUrl: avatar });
       } else {
+        // Role is provisioned at signup only. Social sign-in must NEVER
+        // overwrite an existing account's role — otherwise an admin who
+        // signs in with Google gets silently demoted to citizen. Promotions
+        // happen exclusively through the admin Users page / seeded accounts.
         const updates = {};
-        if (user.role !== requestedRole) updates.role = requestedRole;
         if (user.name !== name) updates.name = name;
         if (avatar && user.photoURL !== avatar) updates.photo_url = avatar;
         if (Object.keys(updates).length > 0) {
