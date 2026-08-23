@@ -72,21 +72,61 @@ function softmax(logits) {
   return exp.map((v) => v / sum);
 }
 
+// Bilinear resample matching torchvision.transforms.Resize / PIL BILINEAR
+// (pixel-center mapping, align_corners=False). sharp's lanczos3 kernel shifts
+// probabilities enough to flip calibrated accept/reject decisions.
+function bilinearResize(rgb, inW, inH, outW, outH) {
+  const out = new Float32Array(outW * outH * 3);
+  const scaleX = inW / outW;
+  const scaleY = inH / outH;
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  const xCoords = [];
+  for (let x = 0; x < outW; x++) {
+    const sx = clamp((x + 0.5) * scaleX - 0.5, 0, Math.max(0, inW - 1));
+    let x0 = Math.floor(sx);
+    if (x0 > inW - 2) x0 = Math.max(0, inW - 2);
+    xCoords.push([x0, Math.min(x0 + 1, inW - 1), clamp(sx - x0, 0, 1)]);
+  }
+  for (let y = 0; y < outH; y++) {
+    const sy = clamp((y + 0.5) * scaleY - 0.5, 0, Math.max(0, inH - 1));
+    let y0 = Math.floor(sy);
+    if (y0 > inH - 2) y0 = Math.max(0, inH - 2);
+    const y1 = Math.min(y0 + 1, inH - 1);
+    const fy = clamp(sy - y0, 0, 1);
+    for (let x = 0; x < outW; x++) {
+      const [x0, x1, fx] = xCoords[x];
+      const i00 = (y0 * inW + x0) * 3;
+      const i01 = (y0 * inW + x1) * 3;
+      const i10 = (y1 * inW + x0) * 3;
+      const i11 = (y1 * inW + x1) * 3;
+      const o = (y * outW + x) * 3;
+      for (let c = 0; c < 3; c++) {
+        const top = rgb[i00 + c] * (1 - fx) + rgb[i01 + c] * fx;
+        const bot = rgb[i10 + c] * (1 - fx) + rgb[i11 + c] * fx;
+        out[o + c] = top * (1 - fy) + bot * fy;
+      }
+    }
+  }
+  return out;
+}
+
 async function preprocessToTensor(imageBuffer) {
   const sharp = (await import("sharp")).default;
   const { data, info } = await sharp(imageBuffer)
     .rotate()
     .removeAlpha()
-    .resize(IMG_SIZE, IMG_SIZE, { fit: "fill" })
     .raw()
     .toBuffer({ resolveWithObject: true });
+  const inW = info.width;
+  const inH = info.height;
+  const resized = bilinearResize(data, inW, inH, IMG_SIZE, IMG_SIZE);
 
   const plane = IMG_SIZE * IMG_SIZE;
   const floats = new Float32Array(3 * plane);
   for (let i = 0; i < plane; i++) {
-    floats[i] = data[i * info.channels] / 255;
-    floats[plane + i] = data[i * info.channels + 1] / 255;
-    floats[2 * plane + i] = data[i * info.channels + 2] / 255;
+    floats[i] = resized[i * 3] / 255;
+    floats[plane + i] = resized[i * 3 + 1] / 255;
+    floats[2 * plane + i] = resized[i * 3 + 2] / 255;
   }
   for (let c = 0; c < 3; c++) {
     const mean = IMAGENET_MEAN[c];
