@@ -244,12 +244,18 @@ export default function CaptureWaste() {
 
           {!preview && (
             <div className="absolute top-4 left-4 right-4 z-20 flex justify-between items-start pointer-events-none">
-              <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3.5 py-2 rounded-2xl">
-                <span className="material-symbols-outlined text-[16px] text-green-400" style={{ fontVariationSettings: "'FILL' 1" }}>location_on</span>
+              <button
+                onClick={() => (location ? undefined : setShowManualLocation(true))}
+                className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3.5 py-2 rounded-2xl pointer-events-auto"
+              >
+                <span className={`material-symbols-outlined text-[16px] ${location ? 'text-green-400' : 'text-amber-300'}`} style={{ fontVariationSettings: "'FILL' 1" }}>{location ? 'location_on' : 'location_off'}</span>
                 <span className="text-[12px] font-bold text-white">
-                  {locationLoading ? 'Detecting...' : location ? 'Location detected' : 'No location'}
+                  {locationLoading ? 'Detecting...' : location ? (location.source === 'manual' ? 'Pinned location' : 'Location detected') : 'Set location'}
                 </span>
-              </div>
+              </button>
+              {location && location.source === 'manual' && (
+                <button onClick={() => setShowManualLocation(true)} className="bg-black/40 backdrop-blur-md px-3 py-2 rounded-2xl pointer-events-auto text-[11px] font-bold text-white">Edit pin</button>
+              )}
             </div>
           )}
 
@@ -265,26 +271,22 @@ export default function CaptureWaste() {
 
         <div className="bg-surface pb-safe z-20 relative" style={{ boxShadow: '0 -4px 20px -4px rgba(0,0,0,0.06)', borderRadius: '24px 24px 0 0' }}>
           {!preview ? (
-            <>
-              <div className="flex justify-center pt-5 pb-2">
-                <div className="flex bg-surface-container rounded-2xl p-1">
-                  <button onClick={() => setCaptureMode('photo')} className={`px-6 py-2 rounded-xl text-[13px] font-bold transition-all duration-200 ${captureMode === 'photo' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant'}`}>Photo</button>
-                  <button onClick={() => setCaptureMode('video')} className={`px-6 py-2 rounded-xl text-[13px] font-bold transition-all duration-200 ${captureMode === 'video' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant'}`}>Video</button>
-                </div>
-              </div>
-              <div className="flex items-center justify-between px-6 py-4 pb-8">
-                <button onClick={() => fileInputRef.current?.click()} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-surface-container-high transition-all active:scale-90 shadow-sm">
-                  <span className="material-symbols-outlined text-on-surface-variant text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>photo_library</span>
+            <div className="flex items-center justify-between px-6 py-6 pb-8">
+              <button onClick={() => fileInputRef.current?.click()} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-surface-container-high transition-all active:scale-90 shadow-sm">
+                <span className="material-symbols-outlined text-on-surface-variant text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>photo_library</span>
+              </button>
+              <button onClick={handleShutterClick} className="relative w-[72px] h-[72px] flex items-center justify-center rounded-full group active:scale-90 transition-transform duration-150">
+                <div className="absolute inset-0 rounded-full border-[3px] border-surface-container-highest" />
+                <div className="w-[60px] h-[60px] rounded-full transition-all duration-200 group-hover:scale-105" style={{ background: 'linear-gradient(135deg, #006b2c, #06b6d4)', boxShadow: '0 4px 16px rgba(0,107,44,0.35)' }} />
+              </button>
+              {torchSupported ? (
+                <button onClick={toggleTorch} className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-all active:scale-90 shadow-sm ${torchOn ? 'bg-primary text-white' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'}`}>
+                  <span className="material-symbols-outlined text-[22px]">{torchOn ? 'flash_on' : 'flash_off'}</span>
                 </button>
-                <button onClick={handleShutterClick} className="relative w-[72px] h-[72px] flex items-center justify-center rounded-full group active:scale-90 transition-transform duration-150">
-                  <div className="absolute inset-0 rounded-full border-[3px] border-surface-container-highest" />
-                  <div className="w-[60px] h-[60px] rounded-full transition-all duration-200 group-hover:scale-105" style={{ background: 'linear-gradient(135deg, #006b2c, #06b6d4)', boxShadow: '0 4px 16px rgba(0,107,44,0.35)' }} />
-                </button>
-                <button className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-surface-container-high transition-all active:scale-90 shadow-sm">
-                  <span className="material-symbols-outlined text-on-surface-variant text-[22px]">flash_off</span>
-                </button>
-              </div>
-            </>
+              ) : (
+                <div className="w-12 h-12" />
+              )}
+            </div>
           ) : (
             <div className="flex items-center gap-3 px-4 py-4 pb-8">
               <button onClick={handleRetake} className="flex-1 bg-surface-container-high text-on-surface text-[14px] font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:bg-surface-variant transition-colors">
