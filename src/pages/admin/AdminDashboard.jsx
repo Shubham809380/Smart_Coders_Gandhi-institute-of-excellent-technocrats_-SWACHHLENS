@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AdminLayout from "../../components/admin/AdminLayout.jsx";
-import { Chip, StatusChip, Icon, Skeleton, ErrorState, relativeTime, wasteTypeLabel } from "../../components/admin/ui.jsx";
+import { Chip, StatusChip, SeverityChip, Icon, Skeleton, ErrorState, wasteTypeLabel } from "../../components/admin/ui.jsx";
 import { adminService } from "../../services.js";
 import { useLive } from "../../hooks/useLive.js";
+
+const OPEN_STATUSES = ["submitted", "ai_analyzed", "under_review", "assigned", "en_route", "cleanup_in_progress", "verification", "reopened"];
 
 const QUICK_LINKS = [
   { to: "/admin/map", icon: "map", label: "Live Map", desc: "Hotspots & field units" },
@@ -11,7 +13,7 @@ const QUICK_LINKS = [
   { to: "/admin/verification", icon: "eye", label: "Verification", desc: "Cleanup proof review" },
   { to: "/admin/duplicates", icon: "copy", label: "Duplicates", desc: "AI-flagged merge review" },
   { to: "/admin/recycling", icon: "recycle", label: "Recycling", desc: "Route heavy recyclables" },
-  { to: "/admin/teams", icon: "users", label: "Teams & Fleet", desc: "Crews, vehicles, loads" },
+  { to: "/admin/users", icon: "idCard", label: "Users", desc: "Accounts & roles" },
 ];
 
 function fmtMins(m) {
@@ -21,9 +23,23 @@ function fmtMins(m) {
   return h < 48 ? `${h}h` : `${Math.round((h / 24) * 10) / 10}d`;
 }
 
+function fmtAge(iso) {
+  const hrs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 3600000);
+  if (hrs < 1) return `${Math.round(hrs * 60)}m`;
+  if (hrs < 48) return `${Math.floor(hrs)}h`;
+  return `${Math.floor(hrs / 24)}d ${Math.floor(hrs % 24)}h`;
+}
+
+function ageTone(iso) {
+  const hrs = (Date.now() - new Date(iso).getTime()) / 3600000;
+  if (hrs >= 48) return "danger";
+  if (hrs >= 24) return "warn";
+  return "ok";
+}
+
 export default function AdminDashboard() {
   const [kpiData, setKpiData] = useState(null);
-  const [topReports, setTopReports] = useState([]);
+  const [openReports, setOpenReports] = useState([]);
   const [teams, setTeams] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,14 +48,14 @@ export default function AdminDashboard() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const [analytics, reports, teamList, alertList] = await Promise.all([
+      const [analytics, complaints, teamList, alertList] = await Promise.all([
         adminService.getAnalytics(),
-        adminService.getComplaints({ sort: "priority", limit: 6 }),
+        adminService.getComplaints({ sort: "priority", limit: 200 }),
         adminService.getTeamsWithLoad(),
-        adminService.getAlerts(6),
+        adminService.getAlerts(8),
       ]);
       setKpiData(analytics);
-      setTopReports(reports.reports || []);
+      setOpenReports((complaints.reports || []).filter((r) => OPEN_STATUSES.includes(r.status)));
       setTeams(teamList || []);
       setAlerts(alertList || []);
     } catch (err) {
@@ -75,6 +91,19 @@ export default function AdminDashboard() {
   const mixTotal = Math.max(1, rawMix.reduce((a, c) => a + (c.count || 0), 0));
   const categoryMix = rawMix.map((c) => ({ ...c, share: Math.round(((c.count || 0) / mixTotal) * 100) }));
   const maxCatShare = Math.max(1, ...categoryMix.map((c) => c.share || 0));
+
+  // Aging queue — oldest first, breaches float to the top.
+  const aging = [...openReports].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const breachCount = aging.filter((r) => ageTone(r.createdAt) === "danger").length;
+
+  // Ward load from live open reports.
+  const wardCounts = new Map();
+  for (const r of aging) {
+    const w = r.location?.wardId || r.wardId || "unassigned";
+    wardCounts.set(w, (wardCounts.get(w) || 0) + 1);
+  }
+  const wardLoad = [...wardCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([w, n]) => ({ ward: w, count: n }));
+  const maxWard = Math.max(1, ...wardLoad.map((w) => w.count));
 
   return (
     <AdminLayout>
@@ -144,36 +173,53 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          {/* Top priorities */}
+          {/* SLA aging queue */}
           <section className="adm-card p-4 lg:col-span-2">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-extrabold">Top priorities</h3>
-              <Link to="/admin/queue" className="text-xs font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>View full queue →</Link>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-extrabold">Aging queue — SLA watch</h3>
+                {breachCount > 0 && <Chip tone="danger" dot>{breachCount} breached 48h</Chip>}
+              </div>
+              <Link to="/admin/queue" className="text-xs font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>Dispatch →</Link>
             </div>
-            {topReports.length === 0 ? (
-              <p className="text-sm adm-muted py-6 text-center">No open complaints.</p>
+            {aging.length === 0 ? (
+              <p className="text-sm adm-muted py-6 text-center">No open complaints — all clear.</p>
             ) : (
-              <ul className="divide-y adm-divide">
-                {topReports.map((r) => (
-                  <li key={r.id}>
-                    <Link to={`/admin/complaints/${r.id}`} className="flex items-center gap-3 py-2.5 group" style={{ textDecoration: "none" }}>
-                      <img src={r.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" loading="lazy" style={{ background: "var(--adm-surface-2)" }} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[13px] font-bold group-hover:underline" style={{ color: "var(--adm-primary)" }}>{r.id}</span>
-                          <StatusChip status={r.status} />
-                          {r.hazardFlag && <Chip tone="danger">Hazard</Chip>}
-                        </div>
-                        <p className="text-xs adm-muted truncate">{wasteTypeLabel(r.wasteType)} · {r.address || "Unknown location"}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <PriorityBadge score={r.effectivePriority?.score ?? r.priorityScore} />
-                        <p className="text-[10px] adm-muted mt-0.5">{relativeTime(r.createdAt)}</p>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-[10px] font-bold uppercase tracking-widest adm-muted">
+                      <th className="pb-2 pr-3">Complaint</th>
+                      <th className="pb-2 pr-3 hidden md:table-cell">Ward</th>
+                      <th className="pb-2 pr-3 hidden lg:table-cell">Severity</th>
+                      <th className="pb-2 pr-3">Priority</th>
+                      <th className="pb-2 text-right">Age</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aging.slice(0, 10).map((r) => (
+                      <tr key={r.id} className="border-t adm-border-c">
+                        <td className="py-2.5 pr-3">
+                          <Link to={`/admin/complaints/${r.id}`} className="flex items-center gap-2 group" style={{ textDecoration: "none" }}>
+                            <span className="text-[13px] font-bold group-hover:underline" style={{ color: "var(--adm-primary)" }}>{r.id}</span>
+                            <StatusChip status={r.status} />
+                          </Link>
+                          <p className="text-[11px] adm-muted truncate max-w-[220px]">{wasteTypeLabel(r.wasteType)}</p>
+                        </td>
+                        <td className="py-2.5 pr-3 text-xs adm-muted hidden md:table-cell">{(r.location?.wardId || r.wardId || "—").replace(/^ward[-_]?/, "W")}</td>
+                        <td className="py-2.5 pr-3 hidden lg:table-cell"><SeverityChip severity={r.severity} /></td>
+                        <td className="py-2.5 pr-3"><PriorityBadge score={r.effectivePriority?.score ?? r.priorityScore} /></td>
+                        <td className="py-2.5 text-right">
+                          <Chip tone={ageTone(r.createdAt)}>{fmtAge(r.createdAt)}</Chip>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {aging.length > 10 && (
+                  <p className="text-[11px] adm-muted mt-2">+{aging.length - 10} more in queue</p>
+                )}
+              </div>
             )}
           </section>
 
@@ -204,10 +250,33 @@ export default function AdminDashboard() {
               )}
             </section>
 
-            {/* Team load */}
+            {/* Ward load */}
+            {wardLoad.length > 0 && (
+              <section className="adm-card p-4">
+                <div className="flex items-center justify-between mb-2.5">
+                  <h3 className="text-sm font-extrabold">Ward load</h3>
+                  <Link to="/admin/map" className="text-xs font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>Map →</Link>
+                </div>
+                <ul className="space-y-2">
+                  {wardLoad.map((w) => (
+                    <li key={w.ward}>
+                      <div className="flex items-center justify-between text-[11px] mb-1">
+                        <span className="font-semibold adm-text">{w.ward.replace(/^ward[-_]?/i, "Ward ")}</span>
+                        <span className="tabular-nums adm-muted">{w.count} open</span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--adm-surface-2)" }}>
+                        <div className="h-full rounded-full" style={{ width: `${Math.max(6, (w.count / maxWard) * 100)}%`, background: w.count >= 5 ? "var(--adm-warn)" : "var(--adm-primary)" }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {/* Team readiness */}
             <section className="adm-card p-4">
               <div className="flex items-center justify-between mb-2.5">
-                <h3 className="text-sm font-extrabold">Team load</h3>
+                <h3 className="text-sm font-extrabold">Team readiness</h3>
                 <Link to="/admin/teams" className="text-xs font-bold hover:underline" style={{ color: "var(--adm-primary)" }}>Manage →</Link>
               </div>
               {teams.length === 0 ? (
@@ -218,7 +287,7 @@ export default function AdminDashboard() {
                     <li key={t.id} className="flex items-center gap-2 text-xs">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: t.availability === "available" ? "var(--adm-ok)" : t.availability === "off_duty" ? "var(--adm-muted)" : "var(--adm-info)" }} />
                       <span className="font-semibold truncate flex-1">{t.name}</span>
-                      <span className="tabular-nums adm-muted">{t.activeTasks ?? 0} open</span>
+                      <span className="tabular-nums adm-muted">{t.activeTasks ?? 0} open · {t.tasksCompletedToday ?? 0} done</span>
                     </li>
                   ))}
                 </ul>
