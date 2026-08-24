@@ -42,7 +42,7 @@ export function fuseResults(cnn, gv, decision) {
     // Multi-label contract holds even solo: report every co-present class.
     const soloCats = cnn.present
       .filter((c) => c !== "non_waste")
-      .map((c) => ({ category: c, confidence: cnn.scores[c] }))
+      .map((c) => ({ category: c, confidence: Math.round(cnn.scores[c] * 1000) / 1000 }))
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, 5);
     return buildResult(cnn, null, {
