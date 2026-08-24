@@ -34,11 +34,18 @@ export function fuseResults(cnn, gv, decision) {
   // ---------- Gemini unavailable: CNN proceeds ALONE but never silently on
   // cases that justified verification in the first place. -------------------
   if (!gv || !gv.called) {
-    const needsReview =
-      decision.action === "verify_gemini" &&
-      (cnn.present.filter((c) => c !== "non_waste").length >= 2 ||
-        cnn.topProb < pipelineConfig.router.autoAcceptProb); // weak solo evidence
-    if (needsReview) reviewReasons.push("gemini_unavailable_on_ambiguous_case");
+    // Mirror the router's ambiguity signals exactly: if ANY of them fired,
+    // a solo CNN verdict is not strong enough to stand unreviewed.
+    const r = pipelineConfig.router;
+    const ambiguousSolo =
+      cnn.present.filter((c) => c !== "non_waste").length >= 2 ||
+      Number.isFinite(cnn.softmaxTop) && cnn.softmaxTop < r.autoAcceptProb ||
+      Number.isFinite(cnn.softmaxMargin) && cnn.softmaxMargin < r.fastPathMinMargin ||
+      cnn.nonWasteScore >= r.nonWasteGrayLow;
+    const reviewReasons2 = [...reviewReasons];
+    if (decision.action === "verify_gemini" && ambiguousSolo) {
+      reviewReasons2.push("gemini_unavailable_on_ambiguous_case");
+    }
     // Multi-label contract holds even solo: report every co-present class.
     const soloCats = cnn.present
       .filter((c) => c !== "non_waste")
@@ -49,7 +56,7 @@ export function fuseResults(cnn, gv, decision) {
       agreement: null,
       provisional: true,
       fusedCategories: soloCats.length ? soloCats : [{ category: cnn.topClass, confidence: cnn.topProb }],
-      reviewReasons,
+      reviewReasons: reviewReasons2,
       trace: { geminiCalled: false },
       decision,
     });
