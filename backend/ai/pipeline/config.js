@@ -134,6 +134,11 @@ export const pipelineConfig = {
     nonWasteGrayLow: Number(process.env.ROUTER_NON_WASTE_GRAY || 0.35),
     // >=2 classes above this prob => mixed waste => always verify.
     mixedOverlapThreshold: Number(process.env.ROUTER_MIXED_OVERLAP || 0.45),
+    // A class only counts as co-present if its sigmoid ALSO reaches this
+    // fraction of the top class's sigmoid. Saturated multi-label heads keep
+    // weak stragglers above any absolute cut; the relative bar kills them
+    // without hiding genuine 50/50 piles.
+    mixedDominanceRatio: Number(process.env.ROUTER_MIXED_DOMINANCE || 0.7),
   },
 
   // ---- Fusion --------------------------------------------------------------

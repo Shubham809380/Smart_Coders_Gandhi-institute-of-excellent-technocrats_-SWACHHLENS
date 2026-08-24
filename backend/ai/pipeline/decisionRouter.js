@@ -26,10 +26,10 @@ export function routeDecision(quality, cnn) {
   }
 
   const r = R();
-  const wasteClasses = Object.entries(cnn.scores).filter(([c]) => c !== "non_waste");
-  const top = cnn.topProb;
+  const top = cnn.softmaxTop;        // calibrated softmax — routing confidence
+  const margin = cnn.softmaxMargin;
   const nonWaste = cnn.nonWasteScore;
-  const isMixed = cnn.present.filter((c) => c !== "non_waste").length >= 2;
+  const isMixed = cnn.present.filter((c) => c !== "non_waste").length >= 2;  // sigmoid presence
   const safetyHit =
     SAFETY_CRITICAL_CLASSES.includes(cnn.topClass) ||
     cnn.present.some((c) => SAFETY_CRITICAL_CLASSES.includes(c));
@@ -49,10 +49,10 @@ export function routeDecision(quality, cnn) {
     !isMixed &&
     !safetyHit &&
     top >= r.autoAcceptProb &&
-    cnn.margin >= r.fastPathMinMargin &&
+    margin >= r.fastPathMinMargin &&
     nonWaste < r.nonWasteGrayLow
   ) {
-    return { action: "accept_cnn", reason: `fast_path (top=${top}, margin=${cnn.margin})` };
+    return { action: "accept_cnn", reason: `fast_path (top=${top}, margin=${margin})` };
   }
 
   // ---- (b) everything else earns verification -----------------------------
@@ -60,7 +60,7 @@ export function routeDecision(quality, cnn) {
   if (isMixed) why.push("mixed_waste");
   if (safetyHit) why.push("safety_critical");
   if (top < r.autoAcceptProb) why.push(`low_confidence (${top})`);
-  if (cnn.margin < r.fastPathMinMargin && !isMixed) why.push(`thin_margin (${cnn.margin})`);
+  if (margin < r.fastPathMinMargin && !isMixed) why.push(`thin_margin (${margin})`);
   if (nonWaste >= r.nonWasteGrayLow) why.push(`subject_ambiguity (non_waste=${nonWaste})`);
   return { action: "verify_gemini", reason: why.join(", ") };
 }

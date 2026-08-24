@@ -105,6 +105,20 @@ export async function classifyMultiLabel(imageBuffer) {
   const [topClass, topProbRaw] = ranked[0];
   const [secondClass, secondProbRaw] = ranked[1] || ["", 0];
 
+  // Calibrated SOFTMAX distribution over waste classes (T-scaled). Routing
+  // confidence uses this — it is what the checkpoint and thresholds.json were
+  // actually trained/calibrated against. Sigmoid margins collapse on
+  // multi-label heads by design, so they are meaningless for arbitration.
+  let softmaxTop = maxSoftmax;
+  let softmaxMargin = 0;
+  if (!trainedMultilabel && raw.length > 1) {
+    const exps = raw.map((z) => Math.exp(z / T - Math.max(...raw) / T));
+    const sum = exps.reduce((a, b) => a + b, 0);
+    const soft = exps.map((e) => e / sum).sort((a, b) => b - a);
+    softmaxTop = soft[0];
+    softmaxMargin = soft.length > 1 ? soft[0] - soft[1] : soft[0];
+  }
+
   return {
     mode: trainedMultilabel ? "trained_multilabel" : "legacy_proxy",
     temperature: T,
@@ -115,6 +129,8 @@ export async function classifyMultiLabel(imageBuffer) {
     secondClass,
     secondProb: Math.round(secondProbRaw * 1000) / 1000,
     margin: Math.round((topProbRaw - secondProbRaw) * 1000) / 1000,
+    softmaxTop: Math.round(softmaxTop * 1000) / 1000,
+    softmaxMargin: Math.round(softmaxMargin * 1000) / 1000,
     nonWasteScore: Math.round(nonWasteScore * 1000) / 1000,
   };
 }
