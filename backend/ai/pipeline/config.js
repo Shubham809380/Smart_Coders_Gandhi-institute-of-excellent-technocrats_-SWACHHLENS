@@ -4,20 +4,18 @@
 // a threshold; if you are editing a number inside a stage file, move it here.
 //
 // ─── TRAINING GUIDANCE (read before retraining the CNN) ─────────────────────
-// 1. NON_WASTE CLASS: add `non_waste` as a real trained class and feed it
-//    NEGATIVE samples: humans/selfies, animals, vehicles, empty roads,
-//    buildings, food plates, documents/screens. This — not prompt engineering —
-//    is what permanently fixes the "person photo predicted as plastic" bug.
-//    Until that checkpoint ships, cnnStage.js derives non_waste from a proxy
-//    (1 - calibrated top-probability) and reports mode:"legacy_proxy".
-// 2. MULTI-LABEL HEAD: train with BCE-with-logits on multi-hot targets so one
-//    image can truly carry several labels. The current checkpoint was trained
-//    with soft-target cross-entropy (area-weighted pile supervision), which
-//    makes sigmoid(logits/T) usable but not perfectly calibrated — hence the
-//    temperature scaling below.
-// 3. TEMPERATURE SCALING: fit T on the validation split by minimising NLL
-//    AFTER training (never during). Run training/fit_temperature.py; it writes
-//    checkpoints/calibration.json which this config loads at boot.
+// 1. NON_WASTE CLASS: shipped as a REAL trained class (index 10). Negatives:
+//    CIFAR-10 animals/vehicles, synthetic documents/screenshots, STL-10
+//    people (training/build_nonwaste_set.py regenerates the set; extend it
+//    with production hard negatives mined from inference_logs).
+// 2. MULTI-LABEL HEAD: trained with BCE-with-logits on multi-hot targets
+//    (--multilabel in train_classifier.py). Legacy 10-output softmax
+//    checkpoints still work via cnnStage.js legacy_proxy mode.
+// 3. TEMPERATURE + THRESHOLD CALIBRATION: run fit_temperature.py then
+//    calibrate_threshold.py AFTER training. calibration.json carries T and
+//    router_overrides (autoAcceptProb / fastPathMinMargin); thresholds.json
+//    keeps the legacy-proxy accept boundary. MUST be bundled to Vercel —
+//    see includeFiles in vercel.json.
 // 4. HARD-NEGATIVE MINING: every production false positive is already logged
 //    to inference_logs via /api/detect-waste. Periodically export images whose
 //    outcome was later corrected (rejected by review/Gemini after a confident
@@ -80,6 +78,16 @@ function loadJson(file) {
 const meta = loadJson("onnx_meta.json") || {};
 const calibration = loadJson("calibration.json") || {};
 
+// Router threshold precedence: env var > calibration.json router_overrides >
+// hardcoded default. fit_temperature.py writes router_overrides after sweeping
+// operating points against real negatives (max rejection s.t. coverage>=80%).
+function routerThreshold(name, envVar, fallback) {
+  if (process.env[envVar]) return Number(process.env[envVar]);
+  const override = calibration.router_overrides?.[name];
+  if (typeof override === "number") return override;
+  return fallback;
+}
+
 export const pipelineConfig = {
   // ---- ONNX model -------------------------------------------------------
   onnx: {
@@ -123,9 +131,9 @@ export const pipelineConfig = {
   // ---- Decision router thresholds ----------------------------------------
   router: {
     // CNN sigmoid prob >= autoAccept AND single-label => skip Gemini (fast path).
-    autoAcceptProb: Number(process.env.ROUTER_AUTO_ACCEPT || 0.82),
+    autoAcceptProb: routerThreshold("autoAcceptProb", "ROUTER_AUTO_ACCEPT", 0.82),
     // Sigmoid margin (top1-top2) required for the fast path.
-    fastPathMinMargin: Number(process.env.ROUTER_FAST_MARGIN || 0.45),
+    fastPathMinMargin: routerThreshold("fastPathMinMargin", "ROUTER_FAST_MARGIN", 0.45),
     // Below this the image is hopeless -> honest reject without spending Gemini.
     lowConfidenceFloor: Number(process.env.ROUTER_LOW_FLOOR || 0.28),
     // non_waste score >= this => reject outright (Gemini not called).

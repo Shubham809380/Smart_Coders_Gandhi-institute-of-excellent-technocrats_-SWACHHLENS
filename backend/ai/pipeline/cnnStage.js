@@ -108,13 +108,18 @@ export async function classifyMultiLabel(imageBuffer) {
   const [topClass, topProbRaw] = ranked[0];
   const [secondClass, secondProbRaw] = ranked[1] || ["", 0];
 
-  // Calibrated SOFTMAX distribution over waste classes (T-scaled). Routing
-  // confidence uses this — it is what the checkpoint and thresholds.json were
-  // actually trained/calibrated against. Sigmoid margins collapse on
-  // multi-label heads by design, so they are meaningless for arbitration.
+  // Routing signals. On the BCE-trained head the sigmoids ARE the calibrated
+  // probabilities (temperature + threshold sweep fitted on exactly this
+  // formulation), so softmaxTop/softmaxMargin carry the top sigmoid and the
+  // top1-top2 sigmoid gap for the decision router's fast path. Legacy
+  // checkpoints keep using their T-scaled softmax, which is what THEY were
+  // calibrated against.
   let softmaxTop = maxSoftmax;
   let softmaxMargin = 0;
-  if (!trainedMultilabel && raw.length > 1) {
+  if (trainedMultilabel) {
+    softmaxTop = topProbRaw;
+    softmaxMargin = topProbRaw - secondProbRaw;
+  } else if (raw.length > 1) {
     const exps = raw.map((z) => Math.exp(z / T - Math.max(...raw) / T));
     const sum = exps.reduce((a, b) => a + b, 0);
     const soft = exps.map((e) => e / sum).sort((a, b) => b - a);

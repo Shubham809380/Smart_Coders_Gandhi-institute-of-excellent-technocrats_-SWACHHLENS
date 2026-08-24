@@ -5,7 +5,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
-      "includeFiles": "swachhlens-ai/checkpoints/best_classifier.onnx;swachhlens-ai/checkpoints/onnx_meta.json;swachhlens-ai/checkpoints/thresholds.json;node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**"
+      "includeFiles": "swachhlens-ai/checkpoints/best_classifier.onnx;swachhlens-ai/checkpoints/onnx_meta.json;swachhlens-ai/checkpoints/thresholds.json;swachhlens-ai/checkpoints/calibration.json;node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**"
     }
   },
   "rewrites": [

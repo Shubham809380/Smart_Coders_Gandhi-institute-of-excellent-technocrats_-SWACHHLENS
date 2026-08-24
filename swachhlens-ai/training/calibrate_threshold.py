@@ -95,7 +95,7 @@ def main() -> None:
     n_waste = len(classes) - 1 if multilabel else len(classes)
     img_size = ckpt.get("img_size", 192)
 
-    from train_classifier import make_model  # reuse architecture factory
+    from train_classifier import make_model, load_nonwaste_records  # reuse factories
     seq, feat_dim = make_model(ckpt["arch"], len(classes))
     import torch.nn as nn
     model = nn.Sequential(seq, nn.Sequential(nn.Dropout(0.2), nn.Linear(feat_dim, len(classes))))
@@ -205,6 +205,7 @@ def main() -> None:
     out = {
         "conf_threshold": best["conf"],
         "margin_threshold": best["margin"],
+        "mode": "bce_multilabel" if multilabel else "ce_softmax",
         "selection_basis": basis,
         "sweep_top": rows[:12],
         "negative_sets_used": list(neg_sources.keys()),
