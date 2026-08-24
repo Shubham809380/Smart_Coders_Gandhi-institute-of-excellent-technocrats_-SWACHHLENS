@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -109,12 +110,12 @@ def _parity_samples(img_size: int, classes: list[str], multilabel: bool, n: int)
     if manifest_path.exists():
         recs = json.loads(manifest_path.read_text())["records"]
         val = [r for r in recs if r["split"] == "val"]
-        paths += [ROOT / "swachhlens-ai" / "training" / r["path"] for r in val[: n // 2]]
-    nw_path = ROOT / "swachhlens-ai" / "training" / "nonwaste_manifest.json"
+        paths += [(ROOT / ".." / r["path"]).resolve() for r in val[: n // 2]]
+    nw_path = ROOT / "training" / "nonwaste_manifest.json"
     if nw_path.exists():
         nw = json.loads(nw_path.read_text())
-        for r in nw[:: max(1, len(nw) // (n - len(paths) or 1))][: n - len(paths)]:
-            paths.append(ROOT / "swachhlens-ai" / "training" / r["path"])
+        for r in nw[:: max(1, len(nw) // max(1, n - len(paths)))][: n - len(paths)]:
+            paths.append((ROOT / "training" / r["path"]).resolve())
     xs = []
     for p in paths[:n]:
         if p.exists():
