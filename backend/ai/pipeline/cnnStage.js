@@ -97,8 +97,11 @@ export async function classifyMultiLabel(imageBuffer) {
   const ranked = Object.entries(scores)
     .filter(([c]) => c !== NON_WASTE_CLASS)
     .sort((a, b) => b[1] - a[1]);
+  // Co-present classes must clear BOTH the absolute bar and a relative bar
+  // against the top class (see mixedDominanceRatio in config).
   const presenceCut = pipelineConfig.router.mixedOverlapThreshold;
-  const present = ranked.filter(([, p]) => p >= presenceCut).map(([c]) => c);
+  const dominanceCut = ranked[0][1] * pipelineConfig.router.mixedDominanceRatio;
+  const present = ranked.filter(([, p]) => p >= Math.max(presenceCut, dominanceCut)).map(([c]) => c);
   // non_waste counts toward "present" for ambiguity purposes when in gray zone.
   if (nonWasteScore >= pipelineConfig.router.nonWasteGrayLow) present.push(NON_WASTE_CLASS);
 

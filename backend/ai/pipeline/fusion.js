@@ -39,9 +39,16 @@ export function fuseResults(cnn, gv, decision) {
       (cnn.present.filter((c) => c !== "non_waste").length >= 2 ||
         cnn.topProb < pipelineConfig.router.autoAcceptProb); // weak solo evidence
     if (needsReview) reviewReasons.push("gemini_unavailable_on_ambiguous_case");
+    // Multi-label contract holds even solo: report every co-present class.
+    const soloCats = cnn.present
+      .filter((c) => c !== "non_waste")
+      .map((c) => ({ category: c, confidence: cnn.scores[c] }))
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 5);
     return buildResult(cnn, null, {
       agreement: null,
       provisional: true,
+      fusedCategories: soloCats.length ? soloCats : [{ category: cnn.topClass, confidence: cnn.topProb }],
       reviewReasons,
       trace: { geminiCalled: false },
       decision,
@@ -127,7 +134,10 @@ function buildResult(cnn, gv, opts) {
   const cats = opts.fusedCategories ||
     [{ category: cnn.topClass, confidence: cnn.topProb }];
   const top = opts.provisionalTop || cats[0];
-  const mixed = cats.filter((c) => c.confidence >= pipelineConfig.router.mixedOverlapThreshold);
+  // Mixed-waste truth lives in the CNN presence set (sigmoid co-presence);
+  // the fused-confidence cut alone would hide it when Gemini is offline.
+  const cnnMixed = cnn.present.filter((c) => c !== "non_waste").length >= 2;
+  const mixed = cnnMixed || cats.filter((c) => c.confidence >= pipelineConfig.router.mixedOverlapThreshold).length >= 2;
 
   return {
     accepted: true,
@@ -140,7 +150,7 @@ function buildResult(cnn, gv, opts) {
       operational: OPERATIONAL_MAP[c.category] || c.category,
       confidence: c.confidence,
     })),
-    mixed_waste: mixed.length >= 2,
+    mixed_waste: mixed,
     volume: opts.volume || null,
     scene: opts.scene || "none",
     requires_human_review: opts.reviewReasons.length > 0,
