@@ -6,10 +6,15 @@
 // BCE retraining that makes this head fully native.
 //
 // Legacy checkpoints (10 softmax-trained outputs, no non_waste class) are
-// supported via a documented proxy:
-//   non_waste_proxy = clamp01(1 - top_softmax_prob / temperature)
-// i.e. "how far is the best waste explanation from explaining the pixels".
-// Once a non_waste-trained checkpoint is deployed (11 outputs) the proxy is
+// supported via a documented proxy anchored to the EMPIRICALLY CALIBRATED
+// accept boundary (checkpoints/thresholds.json, fitted against CIFAR
+// negatives — 84% unknown-rejection there):
+//   non_waste_proxy = clamp01((confThreshold - maxCalibratedSoftmax) / confThreshold)
+// i.e. 0 once the model is as confident as its own calibrated accept bar,
+// rising linearly as the best waste explanation weakens. A naive
+// `1 - maxSoftmax` runs hot on pile-mix soft-target checkpoints (their
+// softmax is intentionally flatter), dragging normal photos into Gemini.
+// Once a non_waste-trained checkpoint ships (11 outputs) the proxy is
 // bypassed automatically — mode flips from legacy_proxy to trained_multilabel.
 
 import path from "node:path";
@@ -34,6 +39,15 @@ function sigmoid(z) {
   if (z >= 0) return 1 / (1 + Math.exp(-z));
   const e = Math.exp(z);
   return e / (1 + e);
+}
+
+function loadConfThreshold() {
+  try {
+    const t = JSON.parse(fs.readFileSync(path.join(pipelineConfig.onnx.checkpointDir, "thresholds.json"), "utf8"));
+    return Number(t.conf_threshold) || 0.8;
+  } catch {
+    return 0.8;
+  }
 }
 
 /**
@@ -75,7 +89,8 @@ export async function classifyMultiLabel(imageBuffer) {
   // Ensure the mandatory reject class exists (proxy or real).
   let nonWasteScore = scores[NON_WASTE_CLASS];
   if (nonWasteScore === undefined) {
-    nonWasteScore = Math.min(1, Math.max(0, 1 - maxSoftmax));
+    const confThreshold = loadConfThreshold();
+    nonWasteScore = Math.min(1, Math.max(0, (confThreshold - maxSoftmax) / confThreshold));
     scores[NON_WASTE_CLASS] = nonWasteScore;
   }
 
