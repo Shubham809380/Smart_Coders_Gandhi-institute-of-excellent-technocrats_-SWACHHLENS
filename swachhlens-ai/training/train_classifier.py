@@ -8,12 +8,20 @@ Phase B: fully fine-tune the winning architecture (last stages unfrozen) with
          realistic augmentation, weighted loss, AdamW + cosine schedule,
          early stopping on validation macro-F1.
 
+Pile-Mix augmentation: real citizen photos are cluttered piles where many
+materials share one frame, but every public waste dataset ships isolated
+single-object shots. During training we therefore composite 2-4 random
+TRAIN-split images onto one canvas and supervise with an area-weighted soft
+label. The model learns each material *inside* a pile while keeping the
+single-label inference contract intact.
+
 Outputs:
   checkpoints/best_classifier.pth   {arch, classes, img_size, state_dict, metrics}
 
 Usage:
   python training/train_classifier.py            # A then B
   python training/train_classifier.py --phase a  # selection only
+  python training/train_classifier.py --phase b --pile-prob 0.35
 """
 from __future__ import annotations
 
@@ -27,6 +35,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image
 from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader, Dataset
@@ -55,10 +64,12 @@ def build_transforms(img_size: int):
     imagenet_mean = [0.485, 0.456, 0.406]
     imagenet_std = [0.229, 0.224, 0.225]
     train_tf = transforms.Compose([
-        transforms.RandomResizedCrop(img_size, scale=(0.65, 1.0)),
+        transforms.RandomResizedCrop(img_size, scale=(0.5, 1.0)),
         transforms.RandomHorizontalFlip(0.5),
         transforms.RandomRotation(15),
-        transforms.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.10),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.15),
+        transforms.RandomApply([transforms.GaussianBlur(3, sigma=(0.1, 1.5))], p=0.15),
+        transforms.RandomGrayscale(p=0.05),
         transforms.ToTensor(),
         transforms.Normalize(imagenet_mean, imagenet_std),
     ])
