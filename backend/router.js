@@ -2,6 +2,8 @@
 import { getAIProvider, MockAIProvider } from "./ai/provider.js";
 import { verifyCleanupCompletion, detectBinType } from "./ai/geminiVerifier.js";
 import { checkWasteImage } from "./ai/wasteGatekeeper.js";
+import { resolveEnsemble } from "./ai/arbitration.js";
+import { buildRescuedAnalysis } from "./ai/onnxProvider.js";
 import { getBinGuidance } from "./binMapping.js";
 import { store } from "./store.js";
 import { publish } from "./events.js";
@@ -658,15 +660,27 @@ export async function handleApiRequest(req, res) {
         analysis = await aiProvider.analyzeWaste(body);
       } catch (aiErr) {
         // Calibrated classifier rejection (below conf/margin thresholds): surface
-        // it honestly instead of substituting a mock result.
+        // it honestly instead of substituting a mock result — unless Gemini can
+        // rescue it (gatekeeper saw real waste with known materials).
         if (aiErr?.statusCode === 400) {
           console.log(`[AI] Classifier rejected image: ${aiErr.message}`);
-          store.logInference({ userId: auth.user.uid, outcome: "rejected", provider: aiProvider.constructor?.name || "unknown", reason: aiErr.message }).catch(() => {});
-          return json(res, 200, {
-            valid_waste_image: false,
-            reason: aiErr.message,
-            message: "This photo doesn't clearly contain recognizable waste. Please retake a closer, clearer photo.",
-          });
+          let rescued = null;
+          try {
+            rescued = gateVerdict ? await buildRescuedAnalysis(body, gateVerdict) : null;
+          } catch (rescueErr) {
+            console.warn("[AI] Gemini rescue failed:", rescueErr.message);
+          }
+          if (rescued) {
+            analysis = rescued;
+            store.logInference({ userId: auth.user.uid, outcome: "gemini_rescued", provider: "gemini_rescue", wasteType: rescued.wasteType || "" }).catch(() => {});
+          } else {
+            store.logInference({ userId: auth.user.uid, outcome: "rejected", provider: aiProvider.constructor?.name || "unknown", reason: aiErr.message }).catch(() => {});
+            return json(res, 200, {
+              valid_waste_image: false,
+              reason: aiErr.message,
+              message: "This photo doesn't clearly contain recognizable waste. Please retake a closer, clearer photo.",
+            });
+          }
         }
         console.warn("[AI] Primary provider failed, using fallback:", aiErr.message);
         try {
@@ -678,6 +692,16 @@ export async function handleApiRequest(req, res) {
           return json(res, 500, { error: { code: "AI_FAILED", message: "Analysis could not be completed. Please try again." } });
         }
       }
+      // Gemini × CNN ensemble arbitration: consensus boost, material override
+      // when the models disagree, and strict-mode rejection when the gatekeeper
+      // was unavailable (blocks confident-but-wrong CNN verdicts on people etc).
+      const ensemble = await resolveEnsemble({ analysis, gate: gateVerdict });
+      if (ensemble.rejected) {
+        console.log(`[AI] Ensemble rejected image.`);
+        store.logInference({ userId: auth.user.uid, outcome: "ensemble_rejected", provider: "gemini+cnn_ensemble", reason: ensemble.rejected.reason || "" }).catch(() => {});
+        return json(res, 200, ensemble.rejected);
+      }
+      analysis = ensemble.analysis;
       // Scene-aware category refinement: the CNN is a material classifier, but
       // three problem-statement categories (drain_blockage, overflowing_bin,
       // construction_debris) are scenes no material class can express. The
@@ -730,6 +754,8 @@ export async function handleApiRequest(req, res) {
           priorityScore: priority.score,
           dispatch: analysis.dispatch || null,
           detectionSummary: analysis.detectionSummary || null,
+          mixedComposition: analysis.mixedComposition || null,
+          needsReview: Boolean(analysis.needsReview),
           processingTime: analysis.processingTime || null,
           models: analysis.models || null,
           imageWarning: lowImageWarning || null,

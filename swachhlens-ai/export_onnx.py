@@ -39,6 +39,10 @@ def main() -> None:
     dummy = torch.randn(1, 3, img_size, img_size)
 
     out_path = CKPT_DIR / "best_classifier.onnx"
+    # dynamo=False -> classic TorchScript exporter, which inlines all weights
+    # into the single .onnx file. The new dynamo exporter (torch>=2.10 default)
+    # spills ~15MB of weights into best_classifier.onnx.data; the Node backend
+    # and Vercel bundle only the .onnx itself, so that layout breaks prod.
     torch.onnx.export(
         model,
         dummy,
@@ -48,6 +52,7 @@ def main() -> None:
         dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
         opset_version=17,
         do_constant_folding=True,
+        dynamo=False,
     )
     print(f"Exported -> {out_path} ({out_path.stat().st_size / 1024 / 1024:.1f} MB)")
 

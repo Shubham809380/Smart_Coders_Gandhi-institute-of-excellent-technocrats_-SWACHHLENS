@@ -319,6 +319,19 @@ export default function AIResults() {
                   ))}
                 </Box>
               )}
+              {analysis.mixedComposition?.length > 0 && (
+                <Box sx={{ mt:1.5 }}>
+                  <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:10, color:T.muted, textTransform:'uppercase', letterSpacing:'0.1em', display:'block', mb:1 }}>Mixed Pile Composition</span>
+                  <Box sx={{ display:'flex', gap:0.75, flexWrap:'wrap' }}>
+                    {analysis.mixedComposition.map((cls, i) => (
+                      <span key={i} style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:10, color:T.accent,
+                        bgcolor: isDark ? 'rgba(34,197,94,0.08)' : 'rgba(34,197,94,0.1)', border:'1px solid rgba(34,197,94,0.35)', borderRadius:4, px:1.5, py:0.5 }}>
+                        {WASTE_LABELS[cls] || cls}
+                      </span>
+                    ))}
+                  </Box>
+                </Box>
+              )}
             </Box>
           )}
 

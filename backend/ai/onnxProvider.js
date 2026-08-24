@@ -48,7 +48,7 @@ async function getSession() {
   return _sessionPromise;
 }
 
-function loadAssets() {
+export function loadAssets() {
   if (_assets) return _assets;
   const dir = findCheckpointDir();
   const meta = JSON.parse(fs.readFileSync(path.join(dir, "onnx_meta.json"), "utf8"));
@@ -165,8 +165,9 @@ export async function classifyBuffer(imageBuffer) {
       checked: true,
       is_waste: accepted,
       category,
-      wasteType: accepted ? (st.meta.op_map[category] || "other") : "unknown",
+      wasteType: accepted ? (st.meta.op_map[category] || "unknown") : "unknown",
       confidence: Math.round(bestP * 1000) / 10,
+      margin: Math.round(margin * 1000) / 10,
       status: accepted ? "accepted" : "rejected",
       rejection_reason: accepted ? null : bestP < ct ? "low_confidence" : "ambiguous_margin",
       top_predictions: topPredictions,
@@ -619,6 +620,7 @@ export class OnnxAIProvider {
       is_waste: true,
       category,
       confidence: Math.round(confidence * 1000) / 10,
+      classifierMargin: cls.checked ? cls.margin : null,
       status: "accepted",
       top_predictions: topPredictions,
       estimatedVolume: volumeCategory,
@@ -652,6 +654,85 @@ export class OnnxAIProvider {
       },
     };
   }
+}
+
+/**
+ * Gemini-rescue path: the calibrated CNN rejected the image (below conf or
+ * margin thresholds), but the Gemini gatekeeper — which sees whole scenes,
+ * not 192px crops — confidently recognises real waste with at least one known
+ * material. Instead of refusing an honest report, rebuild the analysis around
+ * Gemini's material verdict and flag it for human review.
+ */
+export async function buildRescuedAnalysis(payload, gate) {
+  if (!gate?.checked || !gate.isWaste || gate.confidence !== "high") return null;
+  const materials = Array.isArray(gate.materials) ? gate.materials : [];
+  if (materials.length === 0) return null;
+
+  const image = dataUrlToBuffer(payload.image);
+  const started = Date.now();
+  const st = loadAssets();
+  const category = materials[0];
+  const wasteType = st.meta.op_map[category] || "unknown";
+  const confidence = 72; // rescued verdicts are never presented as certain
+
+  const topDetection = await heuristicDetect(image.buffer);
+  const bbox = topDetection ? topDetection.bbox : [0, 0, 1, 1];
+  const { category: volumeCategory, score: volumeScore } =
+    await heuristicVolume(image.buffer, bbox);
+  const volumeRange = VOLUME_RANGES[volumeCategory] || "0.5 - 1.5 cubic meters";
+  const coveragePercent = Math.min(100, Math.round(volumeScore / 100));
+
+  const severityResult = ruleBasedSeverity(wasteType, volumeCategory, confidence);
+  const dispatch = recommendAction(wasteType, volumeCategory, severityResult.severity);
+  const potentialRisk = RISK_MAP[wasteType] || "Area hygiene deterioration";
+
+  const { computePHash } = await import("../utils.js");
+  const phash = await computePHash(image.buffer);
+  const processingTime = (Date.now() - started) / 1000;
+
+  console.log(`[AI:onnx] GEMINI RESCUE: cnn rejected -> ${category} via ${gate.model}`);
+  return {
+    wasteType,
+    is_waste: true,
+    category,
+    confidence,
+    classifierMargin: null,
+    status: "accepted",
+    top_predictions: materials.slice(0, 3).map((m) => ({ class: m, confidence: m === category ? confidence : 55 })),
+    estimatedVolume: volumeCategory,
+    estimatedVolumeRange: volumeRange,
+    volumeScore: Math.round(volumeScore * 10) / 10,
+    severity: severityResult.severity,
+    severityConfidence: severityResult.confidence,
+    severityMethod: severityResult.method,
+    potentialRisk,
+    potentialRisks: potentialRisk.split(", "),
+    recommendation: `Assign ${dispatch.team} within ${dispatch.sla_hours} hours. ${dispatch.instructions}`,
+    dispatch,
+    needsReview: true,
+    detectionSummary: {
+      count: materials.length,
+      classes: materials,
+      topConfidence: confidence,
+      coveragePercent,
+      recyclableHeavy: wasteType === "plastic_waste",
+      ...(phash ? { phash } : {}),
+    },
+    ...(materials.length >= 2 ? { mixedComposition: materials.map((m) => st.meta.op_map[m] || m) } : {}),
+    aiVerified: true,
+    processingTime: Math.round(processingTime * 100) / 100,
+    models: {
+      detector: topDetection ? "opencv_heuristic" : "none",
+      classifier: false,
+      classifierFallback: "gemini_material_rescue",
+      volume: "contour_heuristic",
+      duplicate: "dhash+geo",
+      severity: "rule_based",
+      dispatch: "rules",
+      arbitration: "gemini_rescue",
+      gatekeeper: gate.model || "gemini",
+    },
+  };
 }
 
 export class OnnxAIProviderWithFallback {

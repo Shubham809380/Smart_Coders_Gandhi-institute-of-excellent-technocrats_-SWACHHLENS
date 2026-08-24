@@ -44,39 +44,52 @@ function parseJsonLoose(text) {
 
 async function callGemini(parts) {
   const { keyParam, headers } = authParams();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GATE_TIMEOUT_MS);
-  let response;
-  try {
-    response = await fetch(`${BASE}/${appConfig.geminiModel}:generateContent${keyParam}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 256,
-          responseMimeType: "application/json",
-          // gemini-2.5+ are "thinking" models; disable thinking so the verdict
-          // comes back fast and inside our tight latency budget.
-          ...(appConfig.geminiModel.startsWith("gemini-2.5") || appConfig.geminiModel.startsWith("gemini-3")
-            ? { thinkingConfig: { thinkingBudget: 0 } }
-            : {}),
-        },
-      }),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
+  // One fast retry on transient network/5xx failures — the gate is the only
+  // thing standing between a selfie and the classifier, so a silent timeout
+  // must not degrade us to fail-open on the very first blip.
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GATE_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(`${BASE}/${appConfig.geminiModel}:generateContent${keyParam}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 256,
+            responseMimeType: "application/json",
+            // Deterministic verdicts: fixed seed + no thinking so retries and
+            // identical images always land on the same answer.
+            seed: 42,
+            ...(appConfig.geminiModel.startsWith("gemini-2.5") || appConfig.geminiModel.startsWith("gemini-3")
+              ? { thinkingConfig: { thinkingBudget: 0 } }
+              : {}),
+          },
+        }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      lastErr = err;
+      continue; // timeout / network error -> retry once
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      const err = new Error(`Gemini HTTP ${response.status}: ${body.slice(0, 160)}`);
+      if (response.status >= 500 || response.status === 429) { lastErr = err; continue; }
+      throw err;
+    }
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.filter((p) => !p.thought).map((p) => p.text).filter(Boolean).join("") || "";
+    if (!text) throw new Error("Gemini returned an empty response.");
+    return text;
   }
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Gemini HTTP ${response.status}: ${body.slice(0, 160)}`);
-  }
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.filter((p) => !p.thought).map((p) => p.text).filter(Boolean).join("") || "";
-  if (!text) throw new Error("Gemini returned an empty response.");
-  return text;
+  throw lastErr || new Error("Gemini call failed.");
 }
 
 export function gatekeeperStatus() {
@@ -111,7 +124,7 @@ export async function checkWasteImage({ image }) {
     { text: "Photo to validate:" },
     dataUrlToPart(image),
     {
-      text: 'Look at this image carefully. Does it show waste, garbage, litter, illegal dumping, an overflowing bin, construction debris, or any form of trash/rubbish that would need civic cleanup? A photo counts as valid even if the waste is only partially visible or far away, as long as some trash is genuinely present. People, pets, food photos, clean streets, landscapes, buildings, vehicles without trash are NOT valid. Also identify which special municipal scene best matches the image: "drain_blockage" (a clogged/blocked storm drain or gutter packed with waste), "overflowing_bin" (a dustbin overflowing beyond its rim), "construction_debris" (rubble, sand, bricks, construction material dumped), or "none". Answer strictly in this JSON format only, no extra text: {"is_waste": true/false, "reason": "one short sentence explaining what you actually see in the image", "confidence": "high/medium/low", "scene": "none|drain_blockage|overflowing_bin|construction_debris"}',
+      text: 'Look at this image carefully. Decide whether it shows real waste, garbage, litter or debris that needs municipal cleanup.\n\nVALID (answer is_waste=true): garbage piles of any size, litter scattered anywhere, illegal dumping, an overflowing bin, construction rubble, a clogged/blocked drain packed with waste. A MIXED PILE containing several different materials together (e.g. plastic + paper + cloth + metal + food waste in one heap) is valid and common — do NOT reject it just because many material types are mixed. Waste is valid even when partially visible, far away, or when people/animals also appear in the frame, as long as actual trash is genuinely present.\n\nINVALID (answer is_waste=false): photos where the subject is a PERSON (selfie, portrait, group photo) with no genuine trash visible, body parts, pets/animals, clean streets, landscapes, buildings, vehicles without trash, food plates that are simply a meal, documents, screenshots, or indoor rooms that are untidy but contain no trash. A person posing with or near garbage is VALID only if trash is clearly visible.\n\nAlso answer:\n- "people_present": true if one or more humans are clearly visible in the frame.\n- "scene": best match among "none", "drain_blockage" (clogged storm drain/gutter), "overflowing_bin" (dustbin overflowing beyond its rim), "construction_debris" (rubble/sand/bricks dumped).\n- "materials": every waste material you can actually see, from this exact list only: ["plastic", "paper", "cardboard", "metal", "glass", "organic", "vegetation", "textile", "battery"]. For a mixed pile list ALL visible types; for a single-item photo list just that type. Empty array only when is_waste is false.\n\nAnswer strictly in this JSON format only, no extra text: {"is_waste": true/false, "reason": "one short sentence explaining what you actually see", "confidence": "high/medium/low", "people_present": true/false, "scene": "none|drain_blockage|overflowing_bin|construction_debris", "materials": ["plastic", ...]}',
     },
   ];
 
@@ -121,10 +134,18 @@ export async function checkWasteImage({ image }) {
     const confidence = ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "medium";
     const allowedScenes = ["none", "drain_blockage", "overflowing_bin", "construction_debris"];
     const scene = allowedScenes.includes(parsed.scene) ? parsed.scene : "none";
+    // Material vocabulary must match the CNN's unified class list exactly so
+    // the arbitration layer can compare Gemini's reading with the CNN verdict.
+    const MATERIALS = ["plastic", "paper", "cardboard", "metal", "glass", "organic", "vegetation", "textile", "battery"];
+    const materials = Array.isArray(parsed.materials)
+      ? [...new Set(parsed.materials.filter((m) => MATERIALS.includes(m)))]
+      : [];
     const verdict = {
       checked: true,
       isWaste: Boolean(parsed.is_waste),
       confidence,
+      peoplePresent: Boolean(parsed.people_present),
+      materials: Boolean(parsed.is_waste) ? materials : [],
       reason: String(parsed.reason || "").slice(0, 300),
       ...(scene !== "none" && Boolean(parsed.is_waste) ? { scene } : {}),
       model: appConfig.geminiModel,
