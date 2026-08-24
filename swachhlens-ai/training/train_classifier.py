@@ -96,6 +96,93 @@ class ManifestDataset(Dataset):
         return self.tf(img), self.class_to_idx[rec["label"]]
 
 
+class PileMixDataset(Dataset):
+    """Simulates cluttered real-world waste piles at train time.
+
+    With probability `pile_prob` a sample becomes a canvas of 2..max_items
+    TRAIN-split images: one base filling the frame plus 1-3 smaller patches
+    pasted at random scale/rotation/position. The target is an area-weighted
+    soft distribution over classes, so a pile that is mostly plastic with some
+    cardboard teaches exactly that mixture. Paste images are drawn ONLY from
+    the train split to prevent val/test leakage through compositing.
+    """
+
+    def __init__(self, records: list[dict], class_to_idx: dict[str, int], img_size: int,
+                 pile_prob: float = 0.35, max_items: int = 4,
+                 min_paste_frac: float = 0.22, max_paste_frac: float = 0.55):
+        self.records = records
+        self.class_to_idx = class_to_idx
+        self.img_size = img_size
+        self.pile_prob = float(pile_prob)
+        self.max_items = max(1, int(max_items))
+        self.min_pf, self.max_pf = min_paste_frac, max_paste_frac
+        self.to_tensor = transforms.ToTensor()
+        self.normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        self.jitter = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.15)
+
+    def __len__(self):
+        return len(self.records)
+
+    def _load(self, rec) -> Image.Image:
+        try:
+            return Image.open(ROOT / rec["path"]).convert("RGB")
+        except Exception:
+            return Image.new("RGB", (self.img_size, self.img_size), (110, 110, 110))
+
+    @staticmethod
+    def _rand_crop_scale(img: Image.Image, size: int) -> Image.Image:
+        w, h = img.size
+        scale = 0.55 + 0.45 * torch.rand(1).item()
+        cw, ch = int(w * scale), int(h * scale)
+        if cw < 8 or ch < 8:
+            return img.resize((size, size), Image.BILINEAR)
+        x = torch.randint(0, w - cw + 1, (1,)).item()
+        y = torch.randint(0, h - ch + 1, (1,)).item()
+        return img.crop((x, y, x + cw, y + ch)).resize((size, size), Image.BILINEAR)
+
+    def _make_patch(self, rec) -> Image.Image:
+        side = int(self.img_size * (self.min_pf + (self.max_pf - self.min_pf) * torch.rand(1).item()))
+        patch = self._rand_crop_scale(self._load(rec), side)
+        if torch.rand(1).item() < 0.5:
+            patch = patch.transpose(Image.FLIP_LEFT_RIGHT)
+        angle = (torch.rand(1).item() - 0.5) * 40.0
+        rgba = patch.convert("RGBA").rotate(angle, resample=Image.BILINEAR, expand=True)
+        return rgba
+
+    def __getitem__(self, i):
+        num_classes = len(self.class_to_idx)
+        base_rec = self.records[i]
+        canvas_area = float(self.img_size * self.img_size)
+
+        n_items = 1
+        if self.max_items > 1 and float(torch.rand(1)) < self.pile_prob:
+            n_items = int(torch.randint(2, self.max_items + 1, (1,)).item())
+
+        canvas = self._rand_crop_scale(self._load(base_rec), self.img_size)
+        weights = torch.zeros(num_classes)
+        weights[self.class_to_idx[base_rec["label"]]] += canvas_area
+
+        pasted = 0.0
+        for _ in range(n_items - 1):
+            donor = self.records[int(torch.randint(0, len(self.records), (1,)).item())]
+            patch = self._make_patch(donor)
+            px = torch.randint(0, self.img_size - patch.width + 1, (1,)).item() if patch.width < self.img_size else 0
+            py = torch.randint(0, self.img_size - patch.height + 1, (1,)).item() if patch.height < self.img_size else 0
+            canvas.paste(patch, (int(px), int(py)), patch)
+            area = float(min(patch.width, self.img_size) * min(patch.height, self.img_size))
+            weights[self.class_to_idx[donor["label"]]] += area
+            pasted += area
+
+        # Base keeps whatever area the patches did not cover (clamped so it
+        # never vanishes entirely even under several large pastes).
+        weights[self.class_to_idx[base_rec["label"]]] = max(canvas_area - pasted,
+                                                            0.25 * canvas_area)
+
+        canvas = self.jitter(canvas)
+        x = self.normalize(self.to_tensor(canvas))
+        return x, weights / weights.sum()
+
+
 def load_manifest():
     manifest = json.loads((TRAINING_DIR / "manifest.json").read_text())
     classes = manifest["classes"]
@@ -205,9 +292,11 @@ def unfreeze_tail(model_backbone_seq: nn.Module, arch: str, n_blocks: int) -> No
 
 def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
               class_w: torch.Tensor, img_size: int, epochs: int = 10,
-              tail_blocks: int = 3, lr_head: float = 3e-4, lr_tail: float = 5e-5) -> dict:
-    train_tf, eval_tf = build_transforms(img_size)
-    tr_ds = ManifestDataset(by_split["train"], train_tf, class_to_idx)
+              tail_blocks: int = 3, lr_head: float = 3e-4, lr_tail: float = 5e-5,
+              pile_prob: float = 0.35, pile_max_items: int = 4) -> dict:
+    _, eval_tf = build_transforms(img_size)
+    tr_ds = PileMixDataset(by_split["train"], class_to_idx, img_size,
+                           pile_prob=pile_prob, max_items=pile_max_items)
     va_ds = ManifestDataset(by_split["val"], eval_tf, class_to_idx)
     tr = DataLoader(tr_ds, batch_size=64, shuffle=True, num_workers=NUM_WORKERS,
                     persistent_workers=True, drop_last=True)
@@ -237,6 +326,9 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
         for bi, (x, y) in enumerate(tr):
             x, y = x.to(DEVICE), y.to(DEVICE)
             logits = model(x)
+            # y is either a hard index batch (n_items==1 everywhere would still
+            # be float from PileMix) or an area-weighted soft distribution;
+            # CrossEntropyLoss accepts probability targets natively.
             loss = crit(logits, y)
             opt.zero_grad()
             loss.backward()
@@ -278,8 +370,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--phase", choices=["a", "b", "full"], default="full")
     ap.add_argument("--img-size", type=int, default=192)
-    ap.add_argument("--epochs-b", type=int, default=10)
+    ap.add_argument("--epochs-b", type=int, default=12)
     ap.add_argument("--tail-blocks", type=int, default=3)
+    ap.add_argument("--pile-prob", type=float, default=0.35,
+                    help="probability a train sample becomes a composited mixed pile")
+    ap.add_argument("--pile-max-items", type=int, default=4,
+                    help="max images composited into one pile canvas")
     ap.add_argument("--arch", default=None,
                     help="override winner architecture for phase b")
     args = ap.parse_args()
@@ -322,7 +418,8 @@ def main() -> None:
         print(f"\n=== PHASE B: fine-tuning {arch} ===")
         ft = fine_tune(arch, classes, class_to_idx, by_split, class_w,
                        img_size=args.img_size, epochs=args.epochs_b,
-                       tail_blocks=args.tail_blocks)
+                       tail_blocks=args.tail_blocks,
+                       pile_prob=args.pile_prob, pile_max_items=args.pile_max_items)
         ckpt = {
             "arch": arch,
             "classes": classes,
