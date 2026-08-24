@@ -4,6 +4,7 @@ import { verifyCleanupCompletion, detectBinType } from "./ai/geminiVerifier.js";
 import { checkWasteImage } from "./ai/wasteGatekeeper.js";
 import { resolveEnsemble } from "./ai/arbitration.js";
 import { buildRescuedAnalysis } from "./ai/onnxProvider.js";
+import { detectWaste as runHybridPipeline } from "./ai/pipeline/index.js";
 import { getBinGuidance } from "./binMapping.js";
 import { store } from "./store.js";
 import { publish } from "./events.js";
@@ -618,6 +619,39 @@ export async function handleApiRequest(req, res) {
       const { salt: newSalt, passwordHash: newHash } = await createPasswordHash(newPassword);
       await store.updateUserProfile(auth.user.uid, { password_hash: newHash, salt: newSalt });
       return json(res, 200, { ok: true, message: "Password changed successfully." });
+    }
+
+    // ---- Hybrid Gemini+CNN pipeline (multi-label, review-flagged) ----
+    if (pathname === "/api/detect-waste" && req.method === "POST") {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      const body = await readJson(req);
+      if (!body.image || !body.image.startsWith("data:")) {
+        return json(res, 400, { error: { code: "NO_IMAGE", message: "Please capture or upload a photo before analyzing." } });
+      }
+      if (body.image.length > 10 * 1024 * 1024) {
+        return json(res, 400, { error: { code: "IMAGE_TOO_LARGE", message: "Image is too large. Please capture a smaller photo." } });
+      }
+      const imageBuffer = Buffer.from(body.image.split(",").pop(), "base64");
+      let result;
+      try {
+        result = await runHybridPipeline({ imageBuffer });
+      } catch (err) {
+        console.error("[detect-waste] pipeline error:", err.message);
+        return json(res, 500, { error: { code: "PIPELINE_FAILED", message: "Analysis could not be completed. Please try again." } });
+      }
+      // Hard-negative mining feed: every verdict is logged with its trace so
+      // corrected outcomes can be mined back into the next training round
+      // (see TRAINING GUIDANCE in ai/pipeline/config.js).
+      store.logInference({
+        userId: auth.user.uid,
+        outcome: result.accepted ? "hybrid_accepted" : "hybrid_rejected",
+        provider: "hybrid_gemini_cnn",
+        wasteType: result.waste_type || "",
+        confidence: result.categories?.[0]?.confidence || 0,
+        reason: result.rejected?.reason || (result.requires_human_review ? `review:${(result.review_reasons || []).join(";")}` : ""),
+      }).catch(() => {});
+      return json(res, 200, result);
     }
 
     if (pathname === "/api/ai/analyze" && req.method === "POST") {

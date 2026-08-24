@@ -110,7 +110,7 @@ function bilinearResize(rgb, inW, inH, outW, outH) {
   return out;
 }
 
-async function preprocessToTensor(imageBuffer) {
+export async function preprocessToTensor(imageBuffer) {
   const sharp = (await import("sharp")).default;
   const { data, info } = await sharp(imageBuffer)
     .rotate()
