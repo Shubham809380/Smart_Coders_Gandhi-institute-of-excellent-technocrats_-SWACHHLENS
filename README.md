@@ -33,7 +33,8 @@
 | 🏗️ [Architecture](#️-high-level-architecture) | 🧠 [AI Pipeline](#-ai-pipeline--the-waste-measurement-flow) | ⚖️ [Priority Engine](#️-priority-engine) |
 | 🗄️ [Database Schema](#️-database-schema-neon-postgresql) | 🔌 [API Surface](#-api-surface-backendrouterjs) | 🗺️ [Report Lifecycle](#️-report-lifecycle-13-states) |
 | 👥 [Roles & Screens](#-roles--screens) | 🌐 [Realtime Layer](#-realtime-layer) | ☁️ [Deployment](#️-deployment-topology-live) |
-| 🔑 [Environment Variables](#-environment-variables) | 🚀 [Quickstart](#-quickstart) | 📄 [License](#-license) |
+| 🔑 [Environment Variables](#-environment-variables) | 🔐 [Demo / Admin Access](#-demo--admin-access) | 📂 [Project Resources](#-project-resources) |
+| 🚀 [Quickstart](#-quickstart) | 📄 [License](#-license) | |
 
 ---
 
@@ -408,6 +409,46 @@ VITE_CLOUDINARY_API_KEY=
 ```
 
 </details>
+
+---
+
+## 🔐 Demo / Admin Access
+
+For evaluation and demo purposes, use the following admin credentials to log in and explore the **Admin / Ward Officer** dashboard (Priority Queue, Smart Dispatch, Analytics, etc.):
+
+<div align="center">
+
+| Field | Value |
+|---|---|
+| 🌐 Login URL | [swachhlens-ruddy.vercel.app](https://swachhlens-ruddy.vercel.app/) |
+| 📧 Email | `admin@swachhlens.demo` |
+| 🔑 Password | `admin@809` |
+| 🛡️ Role | `admin` |
+
+</div>
+
+> ⚠️ **Note:** This is a demo/evaluation account seeded for judges and reviewers. Please change the password or disable this account before any production use.
+
+---
+
+## 📂 Project Resources
+
+<div align="center">
+
+| Resource | Link |
+|---|---|
+| 📁 Full Documentation (Google Drive folder) | [Open Drive Folder](https://drive.google.com/drive/folders/1mZBvCBWv1UfXJGSntEsGzuaqV_QYtvd8?usp=sharing) |
+| 🎥 Screen Recording (Demo Walkthrough) | [Watch Video](https://drive.google.com/file/d/1rxVsGibjQTLHAavlCPHpDfB7bKsk9l7J/view?usp=drive_link) |
+| 🌍 Live Project | [swachhlens-ruddy.vercel.app](https://swachhlens-ruddy.vercel.app/) |
+| 🔌 Backend / Socket Deploy | [swachhlens-socket.onrender.com](https://swachhlens-socket.onrender.com) |
+
+</div>
+
+<div align="center">
+
+[![Watch the demo](https://img.shields.io/badge/▶️_Watch_Screen_Recording-Google_Drive-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1rxVsGibjQTLHAavlCPHpDfB7bKsk9l7J/view?usp=drive_link)
+
+</div>
 
 ---
 
