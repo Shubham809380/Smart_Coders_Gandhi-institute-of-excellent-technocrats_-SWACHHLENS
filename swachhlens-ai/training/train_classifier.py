@@ -195,18 +195,21 @@ class NonWasteDataset(Dataset):
     pile would corrupt both labels).
     """
 
-    def __init__(self, records: list[dict], img_size: int, num_waste_classes: int):
+    def __init__(self, records: list[dict], img_size: int, num_waste_classes: int,
+                 augment: bool = True):
         self.records = records
         self.img_size = img_size
         self.num_waste = num_waste_classes
         self.to_tensor = transforms.ToTensor()
         self.normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        self.tf = transforms.Compose([
+        self.tf = (transforms.Compose([
             transforms.RandomResizedCrop(img_size, scale=(0.5, 1.0)),
             transforms.RandomHorizontalFlip(0.5),
             transforms.RandomRotation(15),
             transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.15),
-        ])
+        ]) if augment else transforms.Compose([
+            transforms.Resize((img_size, img_size)),
+        ]))
 
     def __len__(self):
         return len(self.records)
@@ -407,7 +410,7 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
         ])
         va_ds = torch.utils.data.ConcatDataset([
             MultiLabelDataset(base_va, len(classes)),
-            NonWasteDataset(nonwaste_val or [], img_size, len(classes)),
+            NonWasteDataset(nonwaste_val or [], img_size, len(classes), augment=False),
         ])
     else:
         tr_ds, va_ds = base_tr, base_va

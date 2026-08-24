@@ -63,11 +63,21 @@ def cifar_transform(img_size: int):
 
 
 @torch.inference_mode()
-def predict_probs(model, loader) -> tuple[np.ndarray, np.ndarray]:
-    """Returns (max_prob[], margin[]) arrays."""
+def predict_probs(model, loader, multilabel: bool = False,
+                  n_waste: int = 10) -> tuple[np.ndarray, np.ndarray]:
+    """Returns (max_prob[], margin[]) arrays.
+
+    ce_softmax   : softmax over all outputs.
+    bce_multilabel: sigmoid over the WASTE outputs only (the reject class is
+                    excluded - a high non_waste logit must not inflate conf).
+    """
     probs_all, margins_all = [], []
     for x, _ in loader:
-        p = torch.softmax(model(x.to(DEVICE)), dim=1).cpu()
+        out = model(x.to(DEVICE))
+        if multilabel:
+            p = torch.sigmoid(out[:, :n_waste]).cpu()
+        else:
+            p = torch.softmax(out, dim=1).cpu()
         top2 = p.topk(min(2, p.shape[1]), dim=1).values
         probs_all.append(top2[:, 0])
         margins_all.append(top2[:, 0] - top2[:, 1] if top2.shape[1] > 1 else torch.ones_like(top2[:, 0]))
@@ -81,6 +91,8 @@ def main() -> None:
 
     ckpt = torch.load(CKPT_DIR / "best_classifier.pth", map_location=DEVICE, weights_only=False)
     classes = ckpt["classes"]
+    multilabel = ckpt.get("loss") == "bce_multilabel"
+    n_waste = len(classes) - 1 if multilabel else len(classes)
     img_size = ckpt.get("img_size", 192)
 
     from train_classifier import make_model  # reuse architecture factory
@@ -100,7 +112,7 @@ def main() -> None:
     manifest = json.loads((TRAINING_DIR / "manifest.json").read_text())
     val_paths = [(ROOT / r["path"]) for r in manifest["records"] if r["split"] == "val"]
     va_loader = DataLoader(FolderImageDataset(val_paths, eval_tf), batch_size=128, num_workers=6)
-    val_p, val_m = predict_probs(model, va_loader)
+    val_p, val_m = predict_probs(model, va_loader, multilabel, n_waste)
     print(f"Val: n={len(val_p)} mean_conf={val_p.mean():.3f}")
 
     # ---- optional real negatives ----------------------------------------
@@ -111,19 +123,29 @@ def main() -> None:
                             in {".jpg", ".jpeg", ".png", ".webp"}])
         if neg_paths:
             ld = DataLoader(FolderImageDataset(neg_paths, eval_tf), batch_size=64, num_workers=4)
-            neg_sources["user_negative"] = predict_probs(model, ld)
+            neg_sources["user_negative"] = predict_probs(model, ld, multilabel, n_waste)
             print(f"user_negative set: {len(neg_paths)} images")
+
+    if multilabel:
+        # held-out non-waste validation split (same deterministic split as training)
+        _, nw_val = load_nonwaste_records()
+        nw_paths = [(TRAINING_DIR / r["path"]) for r in nw_val]
+        ld = DataLoader(FolderImageDataset(nw_paths, eval_tf), batch_size=64, num_workers=4)
+        neg_sources["nonwaste_holdout"] = predict_probs(model, ld, multilabel, n_waste)
+        print(f"nonwaste_holdout negatives: {len(nw_paths)} images")
 
     if not args.skip_cifar:
         try:
             from torchvision.datasets import CIFAR10
-            raw = CIFAR10(root=str(TRAINING_DIR / "cifar10"), train=False, download=True)
-            subset_idx = list(range(0, len(raw), 3))  # ~3333 images, enough signal
+            # train=True on purpose: the BCE model saw TEST-split CIFAR images
+            # as training negatives, so only the TRAIN split is a clean OOD probe.
+            raw = CIFAR10(root=str(TRAINING_DIR / "cifar10"), train=True, download=True)
+            subset_idx = list(range(0, len(raw), 15))  # ~3333 images, enough signal
             imgs = [raw[i][0] for i in subset_idx]
             ld = DataLoader(FolderImageDataset(imgs, cifar_transform(img_size)),
                             batch_size=128, num_workers=4)
-            neg_sources["cifar10_proxy"] = predict_probs(model, ld)
-            print(f"cifar10_proxy negatives: {len(subset_idx)} images")
+            neg_sources["cifar10_ood"] = predict_probs(model, ld, multilabel, n_waste)
+            print(f"cifar10_ood negatives: {len(subset_idx)} images")
         except Exception as e:  # noqa: BLE001
             print(f"CIFAR-10 unavailable ({e}); calibrating without proxy negatives")
 
