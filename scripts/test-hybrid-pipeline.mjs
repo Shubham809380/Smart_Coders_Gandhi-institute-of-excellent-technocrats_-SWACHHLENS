@@ -1,7 +1,7 @@
 import sharp from "sharp";
-import { routeDecision } from "./backend/ai/pipeline/decisionRouter.js";
-import { fuseResults } from "./backend/ai/pipeline/fusion.js";
-import { detectWaste } from "./backend/ai/pipeline/index.js";
+import { routeDecision } from "../backend/ai/pipeline/decisionRouter.js";
+import { fuseResults } from "../backend/ai/pipeline/fusion.js";
+import { detectWaste } from "../backend/ai/pipeline/index.js";
 import fs from "node:fs";
 
 const mkCnn = (over = {}) => ({
@@ -42,3 +42,4 @@ const q2 = await detectWaste({ imageBuffer: buf });
 check("e2e-clean-accept", q2.accepted && q2.categories.length >= 1);
 
 console.log(`RESULT: ${pass}/${pass + fail} passed`);
+
