@@ -37,6 +37,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
+
+WASTE_CLASSES = 10          # unified taxonomy size; non_waste is appended
+NON_WASTE_LABEL = "non_waste"
 from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
@@ -183,6 +186,92 @@ class PileMixDataset(Dataset):
         return x, weights / weights.sum()
 
 
+class NonWasteDataset(Dataset):
+    """Negative (non-waste) samples from training/nonwaste_manifest.json.
+
+    Target = all-zero waste vector with non_waste=1. In BCE mode this teaches
+    an INDEPENDENT reject class; in CE mode it is appended as class index 10.
+    Pile-Mix donors are NEVER drawn from negatives (a negative pasted onto a
+    pile would corrupt both labels).
+    """
+
+    def __init__(self, records: list[dict], img_size: int, num_waste_classes: int):
+        self.records = records
+        self.img_size = img_size
+        self.num_waste = num_waste_classes
+        self.to_tensor = transforms.ToTensor()
+        self.normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        self.tf = transforms.Compose([
+            transforms.RandomResizedCrop(img_size, scale=(0.5, 1.0)),
+            transforms.RandomHorizontalFlip(0.5),
+            transforms.RandomRotation(15),
+            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.15),
+        ])
+
+    def __len__(self):
+        return len(self.records)
+
+    def __getitem__(self, i):
+        rec = self.records[i]
+        try:
+            img = Image.open(TRAINING_DIR / rec["path"]).convert("RGB")
+        except Exception:
+            img = Image.new("RGB", (self.img_size, self.img_size), (110, 110, 110))
+        x = self.normalize(self.to_tensor(self.tf(img)))
+        y = torch.zeros(self.num_waste + 1)   # +1 => non_waste slot
+        y[self.num_waste] = 1.0
+        return x, y
+
+
+class MultiLabelDataset(torch.utils.data.Dataset):
+    """Wraps a base image-dataset so targets become multi-hot/soft vectors of
+    size num_waste+1. Waste datasets return area-weighted distributions over
+    the first `num_waste` slots; the non_waste slot stays 0."""
+
+    def __init__(self, base: Dataset, num_waste_classes: int):
+        self.base = base
+        self.num_waste = num_waste_classes
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, i):
+        x, y = self.base[i]
+        soft = torch.zeros(self.num_waste + 1)
+        if isinstance(y, torch.Tensor):
+            if y.ndim == 0:
+                soft[int(y.item())] = 1.0
+            elif y.shape[0] == self.num_waste:
+                soft[:self.num_waste] = y
+            else:
+                return x, y.float()
+        else:  # plain python int class index
+            soft[int(y)] = 1.0
+        return x, soft
+
+
+def load_nonwaste_records() -> list[dict]:
+    p = TRAINING_DIR / "nonwaste_manifest.json"
+    if not p.exists():
+        return []
+    recs = json.loads(p.read_text())
+    # deterministic 85/15 train/val split per source label
+    rng = random.Random(SEED)
+    by_label: dict[str, list] = {}
+    for r in recs:
+        by_label.setdefault(r["label"], []).append(r)
+    train, val = [], []
+    for _, group in sorted(by_label.items()):
+        group = sorted(group, key=lambda r: r["path"])
+        rng.shuffle(group)
+        cut = int(len(group) * 0.85)
+        train += group[:cut]
+        val += group[cut:]
+    return_train = [{**r, "split": "train"} for r in train]
+    return_val = [{**r, "split": "val"} for r in val]
+    return return_train, return_val
+
+
 def load_manifest():
     manifest = json.loads((TRAINING_DIR / "manifest.json").read_text())
     classes = manifest["classes"]
@@ -293,18 +382,42 @@ def unfreeze_tail(model_backbone_seq: nn.Module, arch: str, n_blocks: int) -> No
 def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
               class_w: torch.Tensor, img_size: int, epochs: int = 10,
               tail_blocks: int = 3, lr_head: float = 3e-4, lr_tail: float = 5e-5,
-              pile_prob: float = 0.35, pile_max_items: int = 4) -> dict:
+              pile_prob: float = 0.35, pile_max_items: int = 4,
+              multilabel: bool = False,
+              nonwaste_train: list | None = None,
+              nonwaste_val: list | None = None) -> dict:
+    """Fine-tune Phase B.
+
+    multilabel=False : legacy softmax + soft-target CE over `classes` (v1).
+    multilabel=True  : BCEWithLogitsLoss over `classes + [non_waste]` (11
+                       independent sigmoid outputs). Waste images keep their
+                       area-weighted soft targets (BCE accepts prob targets);
+                       negatives carry non_waste=1. Pile-Mix donors are never
+                       negatives.
+    """
+    n_out = len(classes) + (1 if multilabel else 0)
     _, eval_tf = build_transforms(img_size)
-    tr_ds = PileMixDataset(by_split["train"], class_to_idx, img_size,
-                           pile_prob=pile_prob, max_items=pile_max_items)
-    va_ds = ManifestDataset(by_split["val"], eval_tf, class_to_idx)
+    base_tr = PileMixDataset(by_split["train"], class_to_idx, img_size,
+                             pile_prob=pile_prob, max_items=pile_max_items)
+    base_va = ManifestDataset(by_split["val"], eval_tf, class_to_idx)
+    if multilabel:
+        tr_ds = torch.utils.data.ConcatDataset([
+            MultiLabelDataset(base_tr, len(classes)),
+            NonWasteDataset(nonwaste_train or [], img_size, len(classes)),
+        ])
+        va_ds = torch.utils.data.ConcatDataset([
+            MultiLabelDataset(base_va, len(classes)),
+            NonWasteDataset(nonwaste_val or [], img_size, len(classes)),
+        ])
+    else:
+        tr_ds, va_ds = base_tr, base_va
     tr = DataLoader(tr_ds, batch_size=64, shuffle=True, num_workers=NUM_WORKERS,
                     persistent_workers=True, drop_last=True)
     va = DataLoader(va_ds, batch_size=128, shuffle=False, num_workers=2, persistent_workers=True)
 
-    seq, feat_dim = make_model(arch, len(classes))
+    seq, feat_dim = make_model(arch, n_out)
     unfreeze_tail(seq, arch, tail_blocks)
-    head = nn.Sequential(nn.Dropout(0.2), nn.Linear(feat_dim, len(classes)))
+    head = nn.Sequential(nn.Dropout(0.2), nn.Linear(feat_dim, n_out))
     model = nn.Sequential(seq, head).to(DEVICE)
 
     tail_params = [p for p in seq.parameters() if p.requires_grad]
@@ -314,22 +427,36 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
     ], weight_decay=1e-4)
     steps_per_epoch = len(tr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs * steps_per_epoch)
-    crit = nn.CrossEntropyLoss(weight=class_w)
+
+    pos_weight = None
+    if multilabel:
+        # gentle sqrt-scaled pos_weight from train presence rates (target>0.1),
+        # so rare waste classes are not drowned by the all-zero background
+        counts = torch.zeros(n_out)
+        total = 0
+        for _, y in DataLoader(tr_ds, batch_size=256, shuffle=False, num_workers=2):
+            counts += (y > 0.1).sum(0).float()
+            total += y.shape[0]
+        neg = total - counts
+        pw = ((neg / counts.clamp(min=1)).sqrt()).clamp(0.5, 5.0)
+        pos_weight = pw.to(DEVICE)
+        print(f"BCE pos_weight: {[round(v, 2) for v in pw.tolist()]}", flush=True)
+        crit = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    else:
+        crit = nn.CrossEntropyLoss(weight=class_w)
 
     best = {"f1": -1.0}
     history = []
     total_batches = len(tr)
+    nw = len(classes)  # index of the non_waste output in multilabel mode
     for epoch in range(epochs):
         model.train()
         t0 = time.time()
         running = 0.0
         for bi, (x, y) in enumerate(tr):
-            x, y = x.to(DEVICE), y.to(DEVICE)
+            x, y = x.to(DEVICE), y.to(DEVICE).float()
             logits = model(x)
-            # y is either a hard index batch (n_items==1 everywhere would still
-            # be float from PileMix) or an area-weighted soft distribution;
-            # CrossEntropyLoss accepts probability targets natively.
-            loss = crit(logits, y)
+            loss = crit(logits, y) if multilabel else crit(logits, y)
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -345,25 +472,45 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
         preds, gts = [], []
         with torch.no_grad():
             for x, y in va:
-                p = model(x.to(DEVICE)).argmax(1).cpu()
-                preds.append(p)
-                gts.append(y)
-        import torch as _t
-        f1 = f1_score(_t.cat(gts), _t.cat(preds), average="macro")
-        acc = (_t.cat(gts) == _t.cat(preds)).float().mean().item()
+                out = model(x.to(DEVICE))
+                if multilabel:
+                    preds.append((torch.sigmoid(out) >= 0.5).float().cpu())
+                else:
+                    preds.append(out.argmax(1).cpu())
+                gts.append(y if isinstance(y, torch.Tensor) else torch.as_tensor(y))
+        gts_t = torch.cat(gts)
+        preds_t = torch.cat(preds)
+        if multilabel:
+            f1 = f1_score(gts_t.numpy(), preds_t.numpy(), average="macro", zero_division=0)
+            acc = ((preds_t == gts_t).all(dim=1)).float().mean().item()
+            gt_nw, pr_nw = gts_t[:, nw], preds_t[:, nw]
+            nw_tp = float((gt_nw * pr_nw).sum())
+            nw_p = nw_tp / max(float(pr_nw.sum()), 1.0)
+            nw_r = nw_tp / max(float(gt_nw.sum()), 1.0)
+            waste_fp = float(((preds_t[:, :nw].sum(1) > 0) & (gt_nw == 1)).sum()) / \
+                max(float((gt_nw == 1).sum()), 1.0)
+            extra = {"nonwaste_precision": round(nw_p, 4), "nonwaste_recall": round(nw_r, 4),
+                     "waste_fpr_on_negatives": round(waste_fp, 4)}
+        else:
+            f1 = f1_score(gts_t, preds_t, average="macro")
+            acc = (gts_t == preds_t).float().mean().item()
+            extra = {}
         dt = time.time() - t0
         history.append({"epoch": epoch, "train_loss": round(train_loss, 4),
-                        "val_macro_f1": round(f1, 4), "val_acc": round(acc, 4), "sec": round(dt)})
-        print(json.dumps(history[-1]))
+                        "val_macro_f1": round(f1, 4), "val_acc": round(acc, 4),
+                        **extra, "sec": round(dt)})
+        print(json.dumps(history[-1]), flush=True)
         if f1 > best["f1"]:
             best = {"f1": f1, "acc": acc, "epoch": epoch,
-                    "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}}
-            print(f"  new best macro-F1={f1:.4f}, saved")
+                    "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+                    **extra}
+            print(f"  new best macro-F1={f1:.4f}, saved", flush=True)
         # crude early stop: no improvement in 3 epochs
         if epoch - best["epoch"] >= 3:
             print("  early stop")
             break
-    return {"best": best, "history": history, "model": model}
+    return {"best": best, "history": history, "model": model, "multilabel": multilabel,
+            "n_outputs": n_out}
 
 
 def main() -> None:
@@ -378,11 +525,22 @@ def main() -> None:
                     help="max images composited into one pile canvas")
     ap.add_argument("--arch", default=None,
                     help="override winner architecture for phase b")
+    ap.add_argument("--multilabel", action="store_true",
+                    help="BCE multi-label head with a trained non_waste class "
+                         "(requires training/nonwaste_manifest.json)")
     args = ap.parse_args()
 
     seed_everything()
     classes, class_to_idx, by_split, class_w = load_manifest()
     print(f"Device: {DEVICE} | classes: {classes}", flush=True)
+
+    nw_train = nw_val = None
+    out_classes = classes
+    if args.multilabel:
+        nw_train, nw_val = load_nonwaste_records()
+        assert nw_train, "no non-waste negatives found - run build_nonwaste_set.py first"
+        out_classes = classes + [NON_WASTE_LABEL]
+        print(f"non_waste negatives: {len(nw_train)} train / {len(nw_val)} val", flush=True)
 
     _, eval_tf = build_transforms(args.img_size)
     results = {}
@@ -415,27 +573,37 @@ def main() -> None:
 
     if args.phase in ("b", "full"):
         arch = args.arch or (winner if args.phase == "full" else "efficientnet_b0")
-        print(f"\n=== PHASE B: fine-tuning {arch} ===")
+        print(f"\n=== PHASE B: fine-tuning {arch} "
+              f"({'BCE multilabel+non_waste' if args.multilabel else 'softmax CE'}) ===")
         ft = fine_tune(arch, classes, class_to_idx, by_split, class_w,
                        img_size=args.img_size, epochs=args.epochs_b,
                        tail_blocks=args.tail_blocks,
-                       pile_prob=args.pile_prob, pile_max_items=args.pile_max_items)
+                       pile_prob=args.pile_prob, pile_max_items=args.pile_max_items,
+                       multilabel=args.multilabel,
+                       nonwaste_train=nw_train, nonwaste_val=nw_val)
         ckpt = {
             "arch": arch,
-            "classes": classes,
+            "classes": out_classes,
             "img_size": args.img_size,
+            "loss": "bce_multilabel" if args.multilabel else "ce_softmax",
             "state_dict": ft["best"]["state"],
             "metrics": {
                 "val_macro_f1": round(ft["best"]["f1"], 4),
                 "val_acc": round(ft["best"].get("acc", 0.0), 4),
-                "phase_a_selection": results,
+                **{k: v for k, v in ft["best"].items()
+                   if k in ("nonwaste_precision", "nonwaste_recall", "waste_fpr_on_negatives")},
+                "phase_a_selection": results if args.phase == "full" else {},
                 "history": ft["history"],
             },
         }
         out = CKPT_DIR / "best_classifier.pth"
         torch.save(ckpt, out)
         (CKPT_DIR / "training_summary.json").write_text(json.dumps(
-            {"phase_a": results, "phase_b_history": ft["history"]}, indent=2))
+            {"phase_a": results if args.phase == "full" else {},
+             "loss": ckpt["loss"],
+             "classes": out_classes,
+             "phase_b_history": ft["history"],
+             "best_epoch_metrics": {k: v for k, v in ft["best"].items() if k != "state"}}, indent=2))
         print(f"\nSaved checkpoint -> {out}")
 
 
