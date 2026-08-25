@@ -153,7 +153,7 @@ export default function AnalyzingWaste() {
           <Box component="button" onClick={() => { reportService.updateDraft({ image: "", video: "", aiResult: null, duplicateMatch: null }); navigate("/report-waste"); }} sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, width: "100%", py: 2.25, borderRadius: 3, bgcolor: "primary.main", color: "white", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer", transition: "all 0.2s", boxShadow: "0 8px 24px -4px rgba(0,107,44,0.3)", "&:hover": { transform: "translateY(-1px)" }, "&:active": { transform: "scale(0.98)" } }}>
             <RetakeIcon fontSize="small" /> Retake Photo
           </Box>
-          <Box component="button" onClick={() => navigate("/home")} sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, width: "100%", py: 2.25, borderRadius: 3, bgcolor: "grey.100", color: "text.primary", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer", transition: "all 0.2s", "&:active": { transform: "scale(0.98)" } }}>
+          <Box component="button" onClick={() => navigate("/home")} sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, width: "100%", py: 2.25, borderRadius: 3, bgcolor: "grey.100", color: "text.primary", fontWeight: 700, fontSize: 14, border: "1px solid", borderColor: "grey.300", cursor: "pointer", transition: "all 0.2s", "&:hover": { bgcolor: "grey.200", borderColor: "grey.400" }, "&:active": { transform: "scale(0.98)" } }}>
             <BackIcon fontSize="small" /> Cancel Report
           </Box>
         </Box>

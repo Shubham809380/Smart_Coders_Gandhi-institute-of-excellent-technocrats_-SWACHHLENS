@@ -44,13 +44,15 @@ export function routeDecision(quality, cnn) {
 
   // ---- (a) fast path ------------------------------------------------------
   // Single clear label, far from every boundary, no reject-class pressure,
-  // nothing safety-critical aboard.
+  // nothing safety-critical aboard.  non_wasteFloor blocks "confidently
+  // wrong" predictions on unknown objects (person wearing clothes fires
+  // textile 0.9+ while non_waste sits at 0.15-0.25).
   if (
     !isMixed &&
     !safetyHit &&
     top >= r.autoAcceptProb &&
     margin >= r.fastPathMinMargin &&
-    nonWaste < r.nonWasteGrayLow
+    nonWaste < r.nonWasteFloor
   ) {
     return { action: "accept_cnn", reason: `fast_path (top=${top}, margin=${margin})` };
   }

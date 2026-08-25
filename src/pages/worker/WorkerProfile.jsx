@@ -162,8 +162,8 @@ export default function WorkerProfile() {
             { icon:"notifications", label:"Notifications", color:T.muted, onClick:() => showToast("Coming soon") },
             { icon:"location_on", label:"Location Settings", color:T.muted, badge:"Active", onClick:() => showToast("Location is active on duty") },
             { icon:"lock", label:"Change Password", color:T.muted, onClick:()=>setShowPasswordModal(true) },
-            { icon:"help", label:"Help & Support", color:T.muted, onClick:() => showToast("Coming soon") },
-            { icon:"info", label:"About", color:T.muted, onClick:() => showToast("SwachhLens v1.0.0 · TechNova 2026") },
+            { icon:"help", label:"Help & Support", color:T.muted, onClick:() => navigate("/help-support") },
+            { icon:"info", label:"About", color:T.muted, onClick:() => navigate("/about") },
             { icon:"logout", label:"Logout", color:"#E5484D", onClick:() => setConfirmLogout(true) },
           ].map((row, i, arr) => (
             <button

@@ -139,7 +139,13 @@ export const pipelineConfig = {
     // non_waste score >= this => reject outright (Gemini not called).
     nonWasteReject: Number(process.env.ROUTER_NON_WASTE_REJECT || 0.62),
     // non_waste score in [grayLow, reject) => ambiguous subject -> verify.
-    nonWasteGrayLow: Number(process.env.ROUTER_NON_WASTE_GRAY || 0.35),
+    nonWasteGrayLow: Number(process.env.ROUTER_NON_WASTE_GRAY || 0.15),
+    // Fast-path ceiling: images with non_waste above this are NEVER fast-
+    // accepted even when the waste class is sharp — a person wearing clothes
+    // fires textile 0.9+ while non_waste sits at 0.15-0.25, below the old
+    // gray zone (0.35). This floor blocks those "confidently wrong" calls
+    // from skipping Gemini verification.
+    nonWasteFloor: Number(process.env.ROUTER_NON_WASTE_FLOOR || 0.15),
     // >=2 classes above this prob => mixed waste => always verify.
     mixedOverlapThreshold: Number(process.env.ROUTER_MIXED_OVERLAP || 0.45),
     // A class only counts as co-present if its sigmoid ALSO reaches this

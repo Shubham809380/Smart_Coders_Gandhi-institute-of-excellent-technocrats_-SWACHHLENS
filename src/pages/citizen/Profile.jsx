@@ -469,7 +469,8 @@ export default function Profile() {
             icon={<Help sx={{ color: "secondary.main", fontSize: 20 }} />}
             iconColor="secondary"
             title="Help & Support"
-            subtitle="support@swachhlens.app"
+            subtitle="FAQ, tips & contact"
+            onClick={() => navigate("/help-support")}
           />
 
           <Divider variant="inset" component="li" sx={{ mx: 2.5 }} />
@@ -478,7 +479,8 @@ export default function Profile() {
             icon={<Info sx={{ color: "grey.500", fontSize: 20 }} />}
             iconColor="grey"
             title="About"
-            subtitle="SwachhLens v1.0.0 · TechNova 2026"
+            subtitle="SwachhLens v1.0.0"
+            onClick={() => navigate("/about")}
           />
         </Card>
 

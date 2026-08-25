@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes, Navigate, useParams } from "react-router-
 import { ProtectedRoute, ReconnectingScreen } from "./components/ProtectedRoute";
 import { appService, authService } from "./services.js";
 import { APP_STATES } from "./data.js";
+import ChunkErrorBoundary from "./components/ChunkErrorBoundary.jsx";
 import logo from "./logo.svg";
 
 const SplashScreen = lazy(() => import("./pages/SplashScreen"));
@@ -24,6 +25,8 @@ const TrackingCleanup = lazy(() => import("./pages/citizen/TrackingCleanup"));
 const MyReports = lazy(() => import("./pages/citizen/MyReports"));
 const Profile = lazy(() => import("./pages/citizen/Profile"));
 const NotificationsPage = lazy(() => import("./pages/citizen/NotificationsPage"));
+const HelpSupport = lazy(() => import("./pages/citizen/HelpSupport"));
+const About = lazy(() => import("./pages/citizen/About"));
 
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const LiveMap = lazy(() => import("./pages/admin/LiveMap"));
@@ -122,8 +125,9 @@ export default function App() {
   }
   return (
     <BrowserRouter>
-      <Suspense fallback={null}>
-        <Routes>
+      <ChunkErrorBoundary>
+        <Suspense fallback={null}>
+          <Routes>
           {/* Public Routes */}
           <Route path="/" element={<SplashScreen />} />
           <Route path="/permissions" element={<PermissionFlow />} />
@@ -186,6 +190,16 @@ export default function App() {
               <ProfilePage />
             </ProtectedRoute>
           } />
+          <Route path="/help-support" element={
+            <ProtectedRoute allowedRoles={[...CITIZEN_ROLES, ...WORKER_ROLES, ...ADMIN_ROLES]}>
+              <HelpSupport />
+            </ProtectedRoute>
+          } />
+          <Route path="/about" element={
+            <ProtectedRoute allowedRoles={[...CITIZEN_ROLES, ...WORKER_ROLES, ...ADMIN_ROLES]}>
+              <About />
+            </ProtectedRoute>
+          } />
 
           {/* Worker Routes */}
           <Route path="/worker/home" element={
@@ -243,8 +257,9 @@ export default function App() {
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </Suspense>
+          </Routes>
+        </Suspense>
+      </ChunkErrorBoundary>
     </BrowserRouter>
   );
 }
