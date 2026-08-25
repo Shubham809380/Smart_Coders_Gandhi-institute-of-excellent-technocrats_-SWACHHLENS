@@ -37,19 +37,23 @@ export async function mapHybridToApp(fused, ctx = {}) {
   const scene = fused.scene && SCENE_CATEGORIES.includes(fused.scene) ? fused.scene : null;
   const wasteType = scene || pipelineConfig.onnx.opMap[topCat] || topCat;
 
-  const volumeCategory = fused.volume?.category || "medium";
+  const volumeRaw = fused.volume?.category || null;
+  const volumeConf = fused.volume?.confidence || "none";
+  // Only treat as estimated when confidence is not "none"; otherwise downstream
+  // consumers see "unknown" instead of silently inheriting a wrong "medium".
+  const volumeCategory = volumeRaw && volumeConf !== "none" ? volumeRaw : null;
   const confidence = Math.round((cats[0]?.confidence ?? 0) * 100);
-  const sev = ruleBasedSeverity(wasteType, volumeCategory, Math.max(confidence, 40));
-  const dispatch = recommendAction(wasteType, volumeCategory, sev.severity);
+  const sev = ruleBasedSeverity(wasteType, volumeCategory || "medium", Math.max(confidence, 40), 1, 0, 0.3, volumeConf);
+  const dispatch = recommendAction(wasteType, volumeCategory || "medium", sev.severity);
 
   return {
     valid_waste_image: true,
     result: {
       wasteType,
       confidence,
-      estimatedVolume: volumeCategory,
+      estimatedVolume: volumeCategory || "unknown",
       estimatedVolumeRange: fused.volume?.range || null,
-      volumeConfidence: fused.volume?.confidence || "none",
+      volumeConfidence: volumeConf,
       severity: sev.severity,
       severityConfidence: sev.confidence || null,
       potentialRisk: (sev.risks || []).join(", "),

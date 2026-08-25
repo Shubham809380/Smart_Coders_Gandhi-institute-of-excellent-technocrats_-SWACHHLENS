@@ -65,7 +65,24 @@ export function fuseResults(cnn, gv, decision) {
   }
 
   // ---------- Existence conflict: verifier is authoritative on "is waste" --
+  // BUT: if the CNN is highly confident (top sigmoid > 0.80) and Gemini says
+  // no waste, flag for human review instead of silently rejecting — the CNN
+  // may be right about waste that Gemini misread (e.g., dark photo, unusual
+  // waste type, or Gemini hallucination).
   if (!gv.containsWaste) {
+    const cnnConfident = (cnn.softmaxTop || 0) >= 0.80;
+    if (cnnConfident) {
+      // CNN disagrees with Gemini's rejection — escalate for human review
+      // with a provisional label so the report is not silently dropped.
+      return buildResult(cnn, gv, {
+        agreement: 0,
+        provisional: true,
+        fusedCategories: [{ category: cnn.topClass, confidence: cnn.topProb }],
+        reviewReasons: ["gemini_rejected_but_cnn_confident"],
+        trace: { geminiCalled: true, geminiModel: gv.model, fusionAgreement: 0, geminiExistsOverride: true },
+        decision: { action: "verify_gemini", reason: "gemini existence conflict with confident CNN" },
+      });
+    }
     return {
       accepted: false,
       rejected: { stage: "gemini_verifier", reason: gv.rejectReason || "No waste detected." },

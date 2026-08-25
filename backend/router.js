@@ -10,6 +10,7 @@ import { store } from "./store.js";
 import { publish } from "./events.js";
 import {
   calculatePriority,
+  computePriorityBreakdown,
   createId,
   createPasswordHash,
   createResetToken,
@@ -25,6 +26,7 @@ import {
   saveDataUrlMedia,
   sha256Hex,
   validateStatusTransition,
+  validateGPSCoordinates,
 } from "./utils.js";
 import { welcomeEmail, signInAlertEmail, reportReceivedEmail, teamAssignedEmail, reportResolvedEmail, passwordResetEmail } from "./mailer.js";
 import { appConfig } from "./config.js";
@@ -162,8 +164,10 @@ const LOCATION_WRITE_TS = new Map();
 // Duplicate detection pipeline (real, layered):
 //   1. Coarse filter: same waste category + GPS within 700 m + created in the
 //      last 48 h (haversine).
-//   2. Image evidence: 64-bit dHash comparison of both photos. Hamming
-//      distance <= 10 confirms the two photos show the same scene and yields
+//   2. Hotspot detection: 3+ reports of same type in same area within 24h
+//      indicate a persistent problem (not duplicate) — suppress duplicate flag.
+//   3. Image evidence: 64-bit dHash comparison of both photos. Hamming
+//      distance <= 8 confirms the two photos show the same scene and yields
 //      a genuine perceptual-similarity score; otherwise the match stays
 //      geo/time-based with an honestly-labelled similarity proxy.
 // Reports whose duplicate group was already reviewed/dismissed never re-flag.
@@ -182,6 +186,21 @@ async function findDuplicateMatch(incoming) {
   if (!candidates.length) {
     return { isPotentialDuplicate: false, primaryReportId: null, similarityScore: 0.14, distanceMeters: 0, method: incomingHash ? "dhash+geo" : "geo_time_category" };
   }
+  // Hotspot detection: 3+ distinct-citizen reports of same type in same area
+  // within 24h means a genuine persistent problem, not duplicates.
+  const hotspotLookbackMs = 1000 * 60 * 60 * 24;
+  const recentSameType = state.reports.filter((report) => {
+    const reportAgeMs = Date.now() - new Date(report.createdAt).getTime();
+    if (reportAgeMs > hotspotLookbackMs) return false;
+    if (!report.location?.latitude || !incoming.location?.latitude) return false;
+    const dist = haversineMeters(report.location, incoming.location);
+    return dist <= 700 && report.aiAnalysis?.wasteType === incoming.aiAnalysis?.wasteType;
+  });
+  const uniqueCitizens = new Set(recentSameType.map((r) => r.citizenId));
+  if (uniqueCitizens.size >= 3) {
+    return { isPotentialDuplicate: false, primaryReportId: null, similarityScore: 0.14, distanceMeters: 0, method: "hotspot_detected", hotspotCount: uniqueCitizens.size };
+  }
+
   const scored = candidates.map((r) => ({
     r,
     d: Math.round(haversineMeters(r.location, incoming.location)),
@@ -190,7 +209,8 @@ async function findDuplicateMatch(incoming) {
       : null,
   }));
   // Prefer visually-confirmed matches; fall back to nearest geo match.
-  const HASH_DUP_MAX_BITS = 10;
+  // Threshold: 8 bits (tighter than before to reduce false positives).
+  const HASH_DUP_MAX_BITS = 8;
   const confirmed = scored
     .filter((s) => s.hashDist != null && s.hashDist <= HASH_DUP_MAX_BITS)
     .sort((a, b) => (a.hashDist - b.hashDist) || (a.d - b.d))[0];
@@ -226,6 +246,15 @@ async function runEscalationSweep({ force = false } = {}) {
     for (const report of stale) {
       try {
         const ageHours = Math.max(1, Math.round((Date.now() - new Date(report.createdAt).getTime()) / 3600000));
+        // Compute LIVE priority to decide SLA breach (not the stale stored value).
+        const breakdown = computePriorityBreakdown(report);
+        const liveLevel = breakdown.level;
+        const slaBreached =
+          (liveLevel === "critical" && ageHours > 12) ||
+          (liveLevel === "high" && ageHours > 12) ||
+          (liveLevel === "medium" && ageHours > 24) ||
+          (liveLevel === "low" && ageHours > 48);
+        if (!slaBreached) continue;
         await store.updateReport(report.id, {
           escalated: true,
           escalatedAt: nowIso(),
@@ -778,7 +807,7 @@ export async function handleApiRequest(req, res) {
           analysis.wasteType = scene;
           try {
             const { ruleBasedSeverity, recommendAction } = await import("./ai/onnxProvider.js");
-            const sev = ruleBasedSeverity(scene, analysis.estimatedVolume || "medium", Number(analysis.confidence) || 70);
+            const sev = ruleBasedSeverity(scene, analysis.estimatedVolume || "medium", Number(analysis.confidence) || 70, 1, 0, 0.3, analysis.volumeConfidence || "none");
             analysis.severity = sev.severity;
             analysis.dispatch = recommendAction(scene, analysis.estimatedVolume || "medium", sev.severity);
             analysis.recommendation = `Assign ${analysis.dispatch.team} within ${analysis.dispatch.sla_hours} hours. ${analysis.dispatch.instructions}`;
@@ -789,7 +818,7 @@ export async function handleApiRequest(req, res) {
         }
       }
       const duplicate = await findDuplicateMatch({ location: body.location || null, aiAnalysis: analysis });
-      const priority = calculatePriority(analysis, { address: body.location?.address || "", duplicateSupportCount: duplicate.isPotentialDuplicate ? 1 : 0, ageHours: 0 });
+      const priority = calculatePriority(analysis, { address: body.location?.address || "", comment: body.comment || "", duplicateSupportCount: duplicate.isPotentialDuplicate ? 1 : 0, ageHours: 0 });
       store.logInference({
         userId: auth.user.uid,
         outcome: "accepted",
@@ -872,6 +901,30 @@ export async function handleApiRequest(req, res) {
       const body = await readJson(req);
       const payload = body || {};
       if (!payload.aiResult || !payload.location) return json(res, 400, { error: { code: "VALIDATION", message: "Waste analysis and location are required." } });
+      // GPS spoofing detection: validate coordinates before processing.
+      const gpsCheck = validateGPSCoordinates(payload.location.latitude, payload.location.longitude);
+      if (!gpsCheck.valid) {
+        console.warn(`[GPS] Invalid coordinates from ${auth.user.uid}: ${gpsCheck.reason}`);
+        // Still accept the report but flag it for admin review.
+      }
+      // Impossible-jump detection: if user reported from a very different location recently, flag it.
+      if (gpsCheck.valid) {
+        try {
+          const userReports = await store.getReportsForUser(auth.user.uid);
+          const recentReport = userReports.find((r) => {
+            const ageMs = Date.now() - new Date(r.createdAt).getTime();
+            return ageMs < 1000 * 60 * 60 && r.location?.latitude && r.location?.longitude;
+          });
+          if (recentReport) {
+            const jumpKm = haversineMeters(recentReport.location, payload.location) / 1000;
+            if (jumpKm > 100) {
+              console.warn(`[GPS] Impossible jump detected for ${auth.user.uid}: ${jumpKm.toFixed(0)}km in <1h`);
+              gpsCheck.flagged = true;
+              gpsCheck.reason = `impossible_jump_${Math.round(jumpKm)}km`;
+            }
+          }
+        } catch { /* best effort */ }
+      }
       if (payload.image && payload.image.length > 8 * 1024 * 1024) {
         return json(res, 400, { error: { code: "IMAGE_TOO_LARGE", message: "Image is too large. Please capture a smaller photo." } });
       }
@@ -884,6 +937,13 @@ export async function handleApiRequest(req, res) {
       if (payload.aiResult.hazardFlag !== undefined) aiAnalysis.hazardFlag = Boolean(payload.aiResult.hazardFlag);
       if (payload.aiResult.recyclableHeavy !== undefined) aiAnalysis.recyclableHeavy = Boolean(payload.aiResult.recyclableHeavy);
       if (payload.aiResult.detectionSummary) aiAnalysis.detectionSummary = payload.aiResult.detectionSummary;
+      // Attach GPS validation flag to detection summary for admin review.
+      if (gpsCheck && (gpsCheck.flagged || !gpsCheck.valid)) {
+        aiAnalysis.detectionSummary = {
+          ...(aiAnalysis.detectionSummary || {}),
+          gpsValidation: { valid: gpsCheck.valid, reason: gpsCheck.reason, flagged: Boolean(gpsCheck.flagged) },
+        };
+      }
 
       let resolvedAddress = payload.location.address || "";
       if ((!resolvedAddress || resolvedAddress.startsWith("Detected location")) && payload.location.latitude && payload.location.longitude) {
@@ -896,7 +956,7 @@ export async function handleApiRequest(req, res) {
         media: { imageUrl: beforeMedia.url, videoUrl: videoMedia.url, thumbnailUrl: beforeMedia.url, storagePath: beforeMedia.storagePath },
         location: { latitude: payload.location.latitude, longitude: payload.location.longitude, address: resolvedAddress, wardId: payload.location.wardId || auth.user.wardId || "ward-unassigned", locality: payload.location.locality || auth.user.locationName || "Unknown" },
         citizenComment: String(payload.comment || ""), aiAnalysis,
-        priority: calculatePriority(aiAnalysis, { address: payload.location.address || "", duplicateSupportCount: 0, ageHours: 0 }),
+        priority: calculatePriority(aiAnalysis, { address: payload.location.address || "", comment: payload.comment || "", duplicateSupportCount: 0, ageHours: 0 }),
         duplicate: { isPotentialDuplicate: false, primaryReportId: null, similarityScore: 0, distanceMeters: 0 },
         status: REPORT_STATUSES.SUBMITTED, statusTimeline: [{ status: REPORT_STATUSES.SUBMITTED, at: nowIso() }],
       };
@@ -1315,7 +1375,7 @@ export async function handleApiRequest(req, res) {
       const teams = await store.getTeamsWithLoad();
       const wasteType = report.aiAnalysis?.wasteType || "";
       const volume = report.aiAnalysis?.estimatedVolume || "small";
-      const needsHeavyVehicle = ["large", "full"].includes(volume);
+      const needsHeavyVehicle = ["large", "very_large"].includes(volume);
       const wantsRecycler = Boolean(report.aiAnalysis?.recyclableHeavy) || wasteType === "plastic_waste" || wasteType === "e_waste";
       const wantsDrain = wasteType === "drain_blockage";
       const wantsHazmat = Boolean(report.aiAnalysis?.hazardFlag) || ["hazardous_waste", "e_waste"].includes(wasteType);

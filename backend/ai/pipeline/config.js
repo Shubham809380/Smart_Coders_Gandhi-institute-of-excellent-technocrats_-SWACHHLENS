@@ -52,7 +52,7 @@ export const OPERATIONAL_MAP = {
 
 // Safety-critical predictions are NEVER fast-path accepted; they always earn
 // a Gemini double-check (cheap insurance against misrouted hazard crews).
-export const SAFETY_CRITICAL_CLASSES = ["battery"];            // hazardous stream (+ e_waste once trained)
+export const SAFETY_CRITICAL_CLASSES = ["battery", "e_waste"];  // hazardous stream
 export const SAFETY_CRITICAL_SCENES = ["drain_blockage"];      // scene-level hazards
 
 const CKPT_CANDIDATES = [

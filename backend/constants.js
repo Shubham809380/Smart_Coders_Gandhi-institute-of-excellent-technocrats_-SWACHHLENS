@@ -56,9 +56,21 @@ export const PRIORITY_WEIGHTS = {
   drainBlockage: 20,
   hospitalNearby: 14,
   schoolNearby: 10,
+  waterBodyNearby: 16,
+  marketNearby: 8,
   roadObstruction: 12,
   duplicateSupport: 8,
   ageOver24Hours: 6,
+};
+
+// Sensitive location keywords for address-based detection.
+// Covers English, Hindi, and Odia keywords used in Indian municipal contexts.
+export const SENSITIVE_LOCATION_KEYWORDS = {
+  hospital: ["hospital", "clinic", "dispensary", "nursing home", "medical center", "अस्पताल", "हॉस्पिटल", "ଡାକ୍ତରଖାନା"],
+  school: ["school", "college", "university", "academy", "vidyalaya", "intercollege", "विद्यालय", "स्कूल", "ବିଦ୍ୟାଳୟ"],
+  waterBody: ["river", "lake", "pond", "nala", "drain", "canal", "stream", "nullah", "water body", "wetland", "flood", "waterlog", "waterlogg",
+    "नदी", "तालाब", "नाला", "नहर", "जलाशय", "ନଦୀ", "ପୋଖରୀ", "ନାଳା"],
+  market: ["market", "bazaar", "haat", "mandi", "shopping", "mall", "बाज़ार", "मंडी", "ବଜାର"],
 };
 
 export const ALLOWED_SIGNUP_FIELDS = ["name", "email", "phone", "password"];

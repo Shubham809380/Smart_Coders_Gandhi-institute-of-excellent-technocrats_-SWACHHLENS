@@ -6,7 +6,7 @@ import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import bcrypt from "bcryptjs";
 import { query } from "./db.js";
-import { PRIORITY_WEIGHTS, REPORT_STATUSES } from "./constants.js";
+import { PRIORITY_WEIGHTS, REPORT_STATUSES, SENSITIVE_LOCATION_KEYWORDS } from "./constants.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -84,11 +84,44 @@ export function haversineMeters(a, b) {
   return 2 * earthRadius * Math.asin(Math.sqrt(base));
 }
 
+// GPS spoofing detection: validates coordinates are reasonable.
+// Returns { valid, reason } — invalid reports are flagged but still accepted
+// (citizen may have poor GPS, not necessarily spoofing).
+export function validateGPSCoordinates(latitude, longitude) {
+  if (latitude == null || longitude == null) return { valid: false, reason: "missing_coordinates" };
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (isNaN(lat) || isNaN(lng)) return { valid: false, reason: "non_numeric_coordinates" };
+  if (lat === 0 && lng === 0) return { valid: false, reason: "null_island" };
+  // India bounding box (approximate): lat 6-37, lng 68-98
+  if (lat < 5 || lat > 38 || lng < 67 || lng > 98) return { valid: false, reason: "outside_india" };
+  // Precision check: GPS coordinates with <3 decimal places are suspicious
+  // (typical phone GPS gives 5-6 decimal places). Not blocking, just flagged.
+  const latDecimals = String(lat).split(".")[1]?.length || 0;
+  const lngDecimals = String(lng).split(".")[1]?.length || 0;
+  if (latDecimals < 3 && lngDecimals < 3) return { valid: true, reason: "low_precision", flagged: true };
+  return { valid: true, reason: "ok" };
+}
+
 export function priorityLevel(score) {
   if (score >= 90) return "critical";
   if (score >= 75) return "high";
   if (score >= 45) return "medium";
   return "low";
+}
+
+/**
+ * Multi-language sensitive location detection using keyword lists.
+ * Checks address string (and optional citizen comment) for sensitive keywords.
+ * Returns { hospital, school, waterBody, market } booleans.
+ */
+function detectSensitiveLocations(address = "", comment = "") {
+  const text = `${address} ${comment}`.toLowerCase();
+  const result = { hospital: false, school: false, waterBody: false, market: false };
+  for (const [key, keywords] of Object.entries(SENSITIVE_LOCATION_KEYWORDS)) {
+    if (keywords.some((kw) => text.includes(kw))) result[key] = true;
+  }
+  return result;
 }
 
 export function calculatePriority(analysis, context = {}) {
@@ -104,13 +137,22 @@ export function calculatePriority(analysis, context = {}) {
     score += PRIORITY_WEIGHTS.drainBlockage;
     reasons.push("Drain blockage risk");
   }
-  if (context.address?.toLowerCase().includes("hospital")) {
+  const locations = detectSensitiveLocations(context.address || "", context.comment || "");
+  if (locations.hospital) {
     score += PRIORITY_WEIGHTS.hospitalNearby;
     reasons.push("Hospital nearby");
   }
-  if (context.address?.toLowerCase().includes("school")) {
+  if (locations.school) {
     score += PRIORITY_WEIGHTS.schoolNearby;
     reasons.push("School nearby");
+  }
+  if (locations.waterBody) {
+    score += PRIORITY_WEIGHTS.waterBodyNearby;
+    reasons.push("Water body nearby");
+  }
+  if (locations.market) {
+    score += PRIORITY_WEIGHTS.marketNearby;
+    reasons.push("Market/commercial area nearby");
   }
   if ((analysis.potentialRisks || []).some((risk) => /road|pedestrian|obstruction/i.test(risk))) {
     score += PRIORITY_WEIGHTS.roadObstruction;
@@ -120,8 +162,10 @@ export function calculatePriority(analysis, context = {}) {
     score += PRIORITY_WEIGHTS.duplicateSupport;
     reasons.push("Multiple nearby reports");
   }
-  if (context.ageHours >= 24) {
-    score += PRIORITY_WEIGHTS.ageOver24Hours;
+  // Progressive age bonus (same formula as computePriorityBreakdown).
+  const agePoints = getAgePoints(context.ageHours || 0);
+  if (agePoints > 0) {
+    score += agePoints;
     reasons.push("Complaint aging beyond 24 hours");
   }
   const clamped = Math.max(0, Math.min(100, score));
@@ -133,29 +177,44 @@ function ageBonusHours(ageHours) {
   return Math.min(14, PRIORITY_WEIGHTS.ageOver24Hours + Math.max(0, Math.floor(ageHours / 24) - 1) * 2);
 }
 
+// Shared age bonus used by both calculatePriority and computePriorityBreakdown.
+function getAgePoints(ageHours) {
+  return ageBonusHours(ageHours);
+}
+
 // Recomputes the full priority breakdown from persisted AI/state data plus the
 // live age of the complaint, so every factor in the score stays auditable.
 export function computePriorityBreakdown(report) {
   const analysis = report.aiAnalysis || {};
-  const address = String(report.location?.address || "").toLowerCase();
+  const address = String(report.location?.address || "");
+  const comment = String(report.citizenComment || "");
   const ageHours = Math.max(0, (Date.now() - new Date(report.createdAt).getTime()) / 3600000);
   const duplicateSupport = (report.duplicate?.isPotentialDuplicate ? 1 : 0) + (report.duplicateSupportCount || 0);
 
+  const locations = detectSensitiveLocations(address, comment);
   const volumePoints = PRIORITY_WEIGHTS.volume[analysis.estimatedVolume] || 0;
   const severityPoints = PRIORITY_WEIGHTS.severity[analysis.severity] || 0;
   const hazardActive = ["hazardous_waste", "e_waste"].includes(analysis.wasteType) || analysis.wasteType === "drain_blockage";
   const hazardPoints = hazardActive ? (analysis.wasteType === "drain_blockage" ? PRIORITY_WEIGHTS.drainBlockage : PRIORITY_WEIGHTS.hazardousWaste) : 0;
-  const hospitalNearby = address.includes("hospital");
-  const schoolNearby = address.includes("school");
-  const sensitivityPoints = (hospitalNearby ? PRIORITY_WEIGHTS.hospitalNearby : 0) + (schoolNearby ? PRIORITY_WEIGHTS.schoolNearby : 0);
+  const sensitivityPoints = (locations.hospital ? PRIORITY_WEIGHTS.hospitalNearby : 0)
+    + (locations.school ? PRIORITY_WEIGHTS.schoolNearby : 0)
+    + (locations.waterBody ? PRIORITY_WEIGHTS.waterBodyNearby : 0)
+    + (locations.market ? PRIORITY_WEIGHTS.marketNearby : 0);
   const roadObstruction = (analysis.potentialRisks || []).some((risk) => /road|pedestrian|obstruction/i.test(risk));
   const roadPoints = roadObstruction ? PRIORITY_WEIGHTS.roadObstruction : 0;
   const frequencyPoints = duplicateSupport > 0 ? PRIORITY_WEIGHTS.duplicateSupport : 0;
-  const agePoints = ageBonusHours(ageHours);
+  const agePoints = getAgePoints(ageHours);
 
   const base = volumePoints + severityPoints + hazardPoints + sensitivityPoints + roadPoints + frequencyPoints;
   const escalationBonus = report.escalated ? 10 : 0;
   const score = Math.max(0, Math.min(100, base + agePoints + escalationBonus));
+
+  const sensitivityLabels = [
+    locations.hospital && "Hospital nearby",
+    locations.school && "School nearby",
+    locations.waterBody && "Water body nearby",
+    locations.market && "Market nearby",
+  ].filter(Boolean);
 
   return {
     score,
@@ -165,7 +224,7 @@ export function computePriorityBreakdown(report) {
       { key: "volume", label: `Volume (${analysis.estimatedVolume || "unknown"})`, points: volumePoints },
       { key: "severity", label: `AI severity (${analysis.severity || "unknown"})`, points: severityPoints },
       { key: "hazard", label: analysis.wasteType === "drain_blockage" ? "Drain blockage risk" : "Hazardous waste", points: hazardPoints },
-      { key: "sensitivity", label: [hospitalNearby && "Hospital nearby", schoolNearby && "School nearby"].filter(Boolean).join(" · ") || "Location sensitivity", points: sensitivityPoints, active: sensitivityPoints > 0 },
+      { key: "sensitivity", label: sensitivityLabels.join(" . ") || "Location sensitivity", points: sensitivityPoints, active: sensitivityPoints > 0 },
       { key: "road", label: "Road / pedestrian obstruction", points: roadPoints, active: roadObstruction },
       { key: "frequency", label: `Reported ${duplicateSupport > 1 ? `${duplicateSupport} times nearby` : duplicateSupport === 1 ? "twice nearby" : "once"}`, points: frequencyPoints, active: frequencyPoints > 0 },
       { key: "age", label: `Open for ${ageHours < 24 ? `${Math.round(ageHours)}h` : `${Math.floor(ageHours / 24)}d ${Math.round(ageHours % 24)}h`}`, points: agePoints, active: agePoints > 0 },
@@ -218,7 +277,7 @@ export function formatReportForClient(report) {
     timestamp: report.createdAt,
     wasteType: report.aiAnalysis?.wasteType || "other",
     aiConfidence: report.aiAnalysis?.confidence || 0,
-    estimatedVolume: report.aiAnalysis?.estimatedVolume || "small",
+    estimatedVolume: report.aiAnalysis?.estimatedVolume || "unknown",
     estimatedVolumeRange: report.aiAnalysis?.estimatedVolumeRange || "",
     severity: report.aiAnalysis?.severity || "low",
     hazardFlag: Boolean(report.aiAnalysis?.hazardFlag),

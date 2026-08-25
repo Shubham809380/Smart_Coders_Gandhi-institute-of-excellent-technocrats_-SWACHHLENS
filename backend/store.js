@@ -514,18 +514,17 @@ export const store = {
 
   // SLA policy: high/critical complaints must be actioned within 12h,
   // medium within 24h, low within 48h. Returns open, never-escalated
-  // complaints that have breached their window.
+  // complaints whose LIVE-computed priority breaches their SLA window.
   async getStaleOpenReports() {
     const res = await query(`
       SELECT * FROM reports
       WHERE status NOT IN ('resolved', 'rejected', 'duplicate')
         AND (escalated IS NOT TRUE)
         AND (
-          (priority_level IN ('high', 'critical') AND created_at < NOW() - INTERVAL '12 hours')
-          OR (priority_level = 'medium' AND created_at < NOW() - INTERVAL '24 hours')
-          OR (priority_level NOT IN ('high', 'critical', 'medium') AND created_at < NOW() - INTERVAL '48 hours')
+          (created_at < NOW() - INTERVAL '12 hours')
+          OR (created_at < NOW() - INTERVAL '48 hours')
         )
-      ORDER BY priority_score DESC, created_at ASC
+      ORDER BY created_at ASC
       LIMIT 50
     `);
     return res.rows.map(rowToReport);

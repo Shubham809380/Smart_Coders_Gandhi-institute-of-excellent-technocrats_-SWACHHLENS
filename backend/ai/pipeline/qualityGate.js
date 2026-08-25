@@ -51,7 +51,7 @@ function laplacianVariance(pixels, width, height) {
 
 /**
  * @returns {{ ok: boolean, stage:"quality", reason?: string,
- *              metrics: { laplacianVariance:number, meanLuminance:number } }}
+ *              metrics: { laplacianVariance:number, meanLuminance:number, overexposedRatio:number } }}
  */
 export async function checkImageQuality(imageBuffer) {
   const cfg = pipelineConfig.qualityGate;
@@ -68,8 +68,20 @@ export async function checkImageQuality(imageBuffer) {
     const metrics = {
       laplacianVariance: Math.round(laplacianVariance(data, width, height) * 10) / 10,
       meanLuminance: Math.round((data.reduce((a, b) => a + b, 0) / data.length) * 10) / 10,
+      overexposedRatio: 0,
     };
 
+    // Overexposure check: count pixels near white (>=250) — if >40% of frame
+    // is blown out, the CNN sees white wash and classifies incorrectly.
+    let overexposed = 0;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] >= 250) overexposed++;
+    }
+    metrics.overexposedRatio = Math.round((overexposed / data.length) * 100) / 100;
+
+    if (metrics.overexposedRatio > 0.40) {
+      return fail("Photo is overexposed (washed out). Please retake with less glare or in shade.", metrics);
+    }
     if (metrics.laplacianVariance < cfg.minLaplacianVariance) {
       return fail("Photo is too blurry. Please retake a steady, focused photo of the waste.", metrics);
     }

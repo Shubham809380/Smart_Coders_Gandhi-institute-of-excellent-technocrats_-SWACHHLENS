@@ -59,16 +59,18 @@ export async function detectWaste({ imageBuffer }) {
   // ---- Stage-2 (conditional) + fusion --------------------------------------
   let gv = null;
   if (decision.action === "verify_gemini") {
+    const cnnHint = { topClass: cnn.topClass, topProb: cnn.topProb, present: cnn.present.filter((c) => c !== "non_waste") };
     try {
-      gv = await geminiVerify(
-        { image: imageToDataUrl(imageBuffer) },
-        { topClass: cnn.topClass, topProb: cnn.topProb, present: cnn.present.filter((c) => c !== "non_waste") },
-      );
+      gv = await geminiVerify({ image: imageToDataUrl(imageBuffer) }, cnnHint);
     } catch (err) {
-      // Verifier errors must NEVER fail the pipeline — proceed CNN-only with
-      // the review flags fusion() applies to ambiguous solo verdicts.
-      console.warn("[pipeline] gemini verifier failed:", err.message);
-      gv = null;
+      // First attempt failed — retry once before falling back to CNN-only.
+      console.warn("[pipeline] gemini verifier failed (attempt 1), retrying:", err.message);
+      try {
+        gv = await geminiVerify({ image: imageToDataUrl(imageBuffer) }, cnnHint);
+      } catch (retryErr) {
+        console.warn("[pipeline] gemini verifier failed (attempt 2), proceeding CNN-only:", retryErr.message);
+        gv = null;
+      }
     }
   }
 

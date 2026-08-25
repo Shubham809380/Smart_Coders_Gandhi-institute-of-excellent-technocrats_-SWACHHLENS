@@ -65,6 +65,12 @@ const clamp01 = (v) => Math.min(1, Math.max(0, Number(v) || 0));
  */
 export async function geminiVerify(payload, cnnSummary) {
   if (!G().apiKeyPresent) return null;
+  // Guard against oversized images: base64-encoded images over ~8MB are
+  // wasteful to send and may exceed Gemini API limits.
+  if (payload.image && payload.image.length > 10 * 1024 * 1024) {
+    console.warn("[gemini] Image too large for verifier, skipping Gemini call");
+    return null;
+  }
 
   const cnnLine = cnnSummary
     ? `The fast CNN model read this image as: dominant="${cnnSummary.topClass}" (p=${cnnSummary.topProb}), also-possible=[${(cnnSummary.present || []).join(", ") || "none"}]. Use it as a hint only — your own eyes decide.`

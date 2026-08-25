@@ -450,11 +450,12 @@ async function heuristicVolume(imageBuffer, bbox) {
   }
 }
 
+// Unified with pipelineConfig.fusion.volumeRanges — single source of truth.
 const VOLUME_RANGES = {
   small: "0.1 - 0.5 cubic meters",
-  medium: "0.5 - 1.5 cubic meters",
-  large: "1.5 - 3.0 cubic meters",
-  very_large: "3.0+ cubic meters",
+  medium: "0.5 - 2 cubic meters",
+  large: "2 - 6 cubic meters",
+  very_large: "6+ cubic meters",
 };
 
 const RISK_MAP = {
@@ -476,7 +477,7 @@ const VOLUME_WEIGHTS = { small: 1, medium: 2, large: 3, very_large: 4 };
 // Exported for the router: scene overrides (Gemini drain/bin/debris verdict)
 // recompute severity + dispatch through the exact same rule engine.
 export function ruleBasedSeverity(wasteType, volumeCategory, confidence,
-  reportFrequency = 1, ageHours = 0, locationSensitivity = 0.3) {
+  reportFrequency = 1, ageHours = 0, locationSensitivity = 0.3, volumeConfidence = "none") {
   let score = 0;
   if (HAZARDOUS_TYPES.includes(wasteType)) score += 35;
   else if (HIGH_RISK_TYPES.includes(wasteType)) score += 25;
@@ -488,6 +489,10 @@ export function ruleBasedSeverity(wasteType, volumeCategory, confidence,
   if (ageHours > 24) score += 10;
   else if (ageHours > 12) score += 5;
   score += locationSensitivity * 15;
+  // Penalize unknown volume: don't reward a guess with severity points.
+  if (!volumeCategory || volumeConfidence === "none") {
+    score = Math.max(0, score - (VOLUME_WEIGHTS[volumeCategory] ?? 2) * 5);
+  }
 
   let level;
   if (score >= 70) level = "critical";
@@ -495,13 +500,14 @@ export function ruleBasedSeverity(wasteType, volumeCategory, confidence,
   else if (score >= 30) level = "medium";
   else level = "low";
 
-  const jitter = Math.floor(Math.random() * 10) - 5; // np.random.randint(-5, 5)
-  const confidencePct = Math.min(95, Math.max(60, Math.trunc(score + jitter)));
+  // Deterministic confidence: derived from score alone (no random jitter).
+  const confidencePct = Math.min(95, Math.max(60, Math.round(score)));
   return { severity: level, confidence: confidencePct, score: Math.round(score * 10) / 10, method: "rule_based" };
 }
 
 // Port of models/dispatch.py recommend_action().
 export function recommendAction(wasteType, volumeCategory, severity) {
+  const vol = volumeCategory || "medium";
   if (wasteType === "hazardous_waste" || severity === "critical") {
     return {
       team: "special_hazmat_team", vehicle: "hazmat_van", sla_hours: 2,
@@ -526,7 +532,7 @@ export function recommendAction(wasteType, volumeCategory, severity) {
       required_ppe: ["gloves"],
     };
   }
-  if (wasteType === "construction_debris" && ["large", "very_large"].includes(volumeCategory)) {
+  if (wasteType === "construction_debris" && ["large", "very_large"].includes(vol)) {
     return {
       team: "heavy_cleanup_crew", vehicle: "dump_truck", sla_hours: 6,
       priority: "high",
@@ -534,7 +540,7 @@ export function recommendAction(wasteType, volumeCategory, severity) {
       required_ppe: ["helmet", "gloves", "boots"],
     };
   }
-  if (wasteType === "plastic_waste" && ["large", "very_large"].includes(volumeCategory)) {
+  if (wasteType === "plastic_waste" && ["large", "very_large"].includes(vol)) {
     return {
       team: "recycling_partner", vehicle: "recycling_truck", sla_hours: 24,
       priority: "medium",
@@ -542,7 +548,7 @@ export function recommendAction(wasteType, volumeCategory, severity) {
       required_ppe: ["gloves"],
     };
   }
-  if (["large", "very_large"].includes(volumeCategory)) {
+  if (["large", "very_large"].includes(vol)) {
     return {
       team: "extended_cleanup_crew", vehicle: "mini_truck", sla_hours: 6,
       priority: "medium",
