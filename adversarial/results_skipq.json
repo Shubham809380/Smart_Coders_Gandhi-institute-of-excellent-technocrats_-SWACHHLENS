@@ -6,55 +6,55 @@
    "id": "person_only_00",
    "type": "person_only",
    "expected": "reject_any",
-   "outcome": "reject[router] non_waste_dominant (0.701)",
+   "outcome": "reject[router] non_waste_dominant (1)",
    "pass": true,
    "review": false,
-   "nonWaste": 0.701
+   "nonWaste": 1
   },
   {
    "id": "person_only_01",
    "type": "person_only",
    "expected": "reject_any",
-   "outcome": "accept(paper+textile) MIXED REVIEW PROVISIONAL",
-   "pass": false,
-   "review": true,
-   "nonWaste": 0.306
+   "outcome": "reject[router] non_waste_dominant (1)",
+   "pass": true,
+   "review": false,
+   "nonWaste": 1
   },
   {
    "id": "person_only_02",
    "type": "person_only",
    "expected": "reject_any",
-   "outcome": "accept(paper) PROVISIONAL",
-   "pass": false,
+   "outcome": "reject[router] non_waste_dominant (1)",
+   "pass": true,
    "review": false,
-   "nonWaste": 0
+   "nonWaste": 1
   },
   {
    "id": "person_only_03",
    "type": "person_only",
    "expected": "reject_any",
-   "outcome": "accept(paper+textile) MIXED REVIEW PROVISIONAL",
-   "pass": false,
-   "review": true,
-   "nonWaste": 0.194
+   "outcome": "reject[router] non_waste_dominant (0.998)",
+   "pass": true,
+   "review": false,
+   "nonWaste": 0.998
   },
   {
    "id": "person_only_04",
    "type": "person_only",
    "expected": "reject_any",
-   "outcome": "accept(paper) PROVISIONAL",
-   "pass": false,
+   "outcome": "reject[router] non_waste_dominant (0.996)",
+   "pass": true,
    "review": false,
-   "nonWaste": 0
+   "nonWaste": 0.996
   },
   {
    "id": "person_only_05",
    "type": "person_only",
    "expected": "reject_any",
-   "outcome": "accept(paper+textile) MIXED REVIEW PROVISIONAL",
-   "pass": false,
-   "review": true,
-   "nonWaste": 0.238
+   "outcome": "reject[router] non_waste_dominant (1)",
+   "pass": true,
+   "review": false,
+   "nonWaste": 1
   },
   {
    "id": "waste_single_06",
@@ -69,18 +69,18 @@
    "id": "waste_single_07",
    "type": "waste_single",
    "expected": "accept_waste",
-   "outcome": "accept(textile+glass) MIXED REVIEW PROVISIONAL",
+   "outcome": "accept(glass) REVIEW PROVISIONAL",
    "pass": true,
    "review": true,
-   "nonWaste": 0.337
+   "nonWaste": 0
   },
   {
    "id": "waste_single_08",
    "type": "waste_single",
    "expected": "accept_waste",
-   "outcome": "accept(metal+glass) MIXED REVIEW PROVISIONAL",
+   "outcome": "accept(metal) PROVISIONAL",
    "pass": true,
-   "review": true,
+   "review": false,
    "nonWaste": 0
   },
   {
@@ -96,133 +96,133 @@
    "id": "mixed_pile_10",
    "type": "mixed_pile",
    "expected": "mixed_detected",
-   "outcome": "accept(plastic+paper+metal) MIXED REVIEW PROVISIONAL",
-   "pass": true,
-   "review": true,
-   "nonWaste": 0.11
+   "outcome": "accept(plastic) PROVISIONAL",
+   "pass": false,
+   "review": false,
+   "nonWaste": 0
   },
   {
    "id": "mixed_pile_11",
    "type": "mixed_pile",
    "expected": "mixed_detected",
-   "outcome": "accept(metal+organic) MIXED REVIEW PROVISIONAL",
-   "pass": true,
-   "review": true,
-   "nonWaste": 0.18
+   "outcome": "accept(metal) PROVISIONAL",
+   "pass": false,
+   "review": false,
+   "nonWaste": 0
   },
   {
    "id": "mixed_pile_12",
    "type": "mixed_pile",
    "expected": "mixed_detected",
-   "outcome": "reject[router] non_waste_dominant (0.692)",
+   "outcome": "accept(textile) REVIEW PROVISIONAL",
    "pass": false,
-   "review": false,
-   "nonWaste": 0.692
+   "review": true,
+   "nonWaste": 0
   },
   {
    "id": "waste_plus_person_13",
    "type": "waste_plus_person",
    "expected": "waste_survives",
-   "outcome": "accept(plastic+paper) MIXED REVIEW PROVISIONAL",
+   "outcome": "accept(plastic) REVIEW PROVISIONAL",
    "pass": true,
    "review": true,
-   "nonWaste": 0.154
+   "nonWaste": 0
   },
   {
    "id": "ood_object_14",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(textile) REVIEW PROVISIONAL",
-   "pass": false,
-   "review": true,
-   "nonWaste": 0.286
+   "outcome": "reject[router] non_waste_dominant (0.999)",
+   "pass": true,
+   "review": false,
+   "nonWaste": 0.999
   },
   {
    "id": "ood_object_15",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(textile) REVIEW PROVISIONAL",
-   "pass": false,
-   "review": true,
-   "nonWaste": 0.235
+   "outcome": "reject[router] non_waste_dominant (0.998)",
+   "pass": true,
+   "review": false,
+   "nonWaste": 0.998
   },
   {
    "id": "ood_object_16",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(organic+mixed_trash) MIXED REVIEW PROVISIONAL",
-   "pass": false,
-   "review": true,
-   "nonWaste": 0.118
+   "outcome": "reject[router] non_waste_dominant (0.999)",
+   "pass": true,
+   "review": false,
+   "nonWaste": 0.999
   },
   {
    "id": "ood_object_17",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(textile) PROVISIONAL",
-   "pass": false,
+   "outcome": "reject[router] non_waste_dominant (0.996)",
+   "pass": true,
    "review": false,
-   "nonWaste": 0
+   "nonWaste": 0.996
   },
   {
    "id": "ood_object_18",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(organic) PROVISIONAL",
-   "pass": false,
+   "outcome": "reject[router] non_waste_dominant (1)",
+   "pass": true,
    "review": false,
-   "nonWaste": 0
+   "nonWaste": 1
   },
   {
    "id": "ood_object_19",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(battery+textile) MIXED REVIEW PROVISIONAL",
-   "pass": false,
-   "review": true,
-   "nonWaste": 0.327
+   "outcome": "reject[router] non_waste_dominant (0.941)",
+   "pass": true,
+   "review": false,
+   "nonWaste": 0.941
   },
   {
    "id": "ood_object_20",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "reject[router] non_waste_dominant (0.64)",
+   "outcome": "reject[router] non_waste_dominant (1)",
    "pass": true,
    "review": false,
-   "nonWaste": 0.64
+   "nonWaste": 1
   },
   {
    "id": "ood_object_21",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(mixed_trash+battery+organic) MIXED REVIEW PROVISIONAL",
+   "outcome": "accept(mixed_trash) REVIEW PROVISIONAL",
    "pass": false,
    "review": true,
-   "nonWaste": 0.45
+   "nonWaste": 0.507
   },
   {
    "id": "ood_object_22",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(paper) PROVISIONAL",
-   "pass": false,
+   "outcome": "reject[router] non_waste_dominant (1)",
+   "pass": true,
    "review": false,
-   "nonWaste": 0
+   "nonWaste": 1
   },
   {
    "id": "ood_object_23",
    "type": "ood_object",
    "expected": "reject_any",
-   "outcome": "accept(paper) PROVISIONAL",
-   "pass": false,
+   "outcome": "reject[router] non_waste_dominant (1)",
+   "pass": true,
    "review": false,
-   "nonWaste": 0
+   "nonWaste": 1
   }
  ],
  "byType": {
   "person_only": {
    "total": 6,
-   "passed": 1
+   "passed": 6
   },
   "waste_single": {
    "total": 4,
@@ -230,7 +230,7 @@
   },
   "mixed_pile": {
    "total": 3,
-   "passed": 2
+   "passed": 0
   },
   "waste_plus_person": {
    "total": 1,
@@ -238,9 +238,9 @@
   },
   "ood_object": {
    "total": 10,
-   "passed": 1
+   "passed": 9
   }
  },
- "totalPass": 9,
+ "totalPass": 20,
  "total": 24
 }

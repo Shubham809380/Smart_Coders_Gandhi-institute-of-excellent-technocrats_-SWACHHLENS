@@ -147,6 +147,10 @@ export const pipelineConfig = {
     // weak stragglers above any absolute cut; the relative bar kills them
     // without hiding genuine 50/50 piles.
     mixedDominanceRatio: Number(process.env.ROUTER_MIXED_DOMINANCE || 0.7),
+    // Reporting floor (looser than routing presence): BCE sigmoids are
+    // area-calibrated, so minor-but-real materials (~25% of frame) still get
+    // reported to users without triggering mixed-waste verification.
+    reportFloor: Number(process.env.ROUTER_REPORT_FLOOR || 0.25),
   },
 
   // ---- Fusion --------------------------------------------------------------

@@ -6,10 +6,11 @@ import fs from "node:fs";
 
 const mkCnn = (over = {}) => ({
   mode: "legacy_proxy", temperature: 0.85,
-  scores: { plastic: 0.9, non_waste: 0.05 },
-  present: ["plastic"], topClass: "plastic", topProb: 0.9,
+  scores: { plastic: 0.95, non_waste: 0.05 },
+  present: ["plastic"], topClass: "plastic", topProb: 0.95,
   secondClass: "paper", secondProb: 0.2, margin: 0.7, nonWasteScore: 0.05,
-  softmaxTop: 0.9, softmaxMargin: 0.7, ...over,
+  // softmaxTop >= calibrated autoAcceptProb (0.92 per calibration.json)
+  softmaxTop: 0.95, softmaxMargin: 0.7, ...over,
 });
 
 let pass = 0, fail = 0;

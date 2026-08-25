@@ -11,8 +11,10 @@
     "vegetation",
     "textile",
     "battery",
-    "mixed_trash"
+    "mixed_trash",
+    "non_waste"
   ],
+  "loss": "bce_multilabel",
   "op_map": {
     "plastic": "plastic_waste",
     "paper": "paper_waste",
@@ -25,5 +27,5 @@
     "battery": "hazardous_waste",
     "mixed_trash": "garbage_dump"
   },
-  "val_macro_f1": 0.9072
+  "val_macro_f1": 0.8806
 }

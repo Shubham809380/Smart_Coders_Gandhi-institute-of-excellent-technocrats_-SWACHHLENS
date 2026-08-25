@@ -53,7 +53,7 @@ const auth = { Authorization: `Bearer ${token}`, "Content-Type": "application/js
 
 // ---- 3-5. detect-waste cases ----------------------------------------------
 const cases = [
-  ["waste accept", path.join(casesDir, "pile_plastic_paper_07.jpg"), (r) => r.valid_waste_image === true && r.result?.confidence > 0],
+  ["waste accept", path.join(casesDir, "pile_plastic_paper_10.jpg"), (r) => r.valid_waste_image === true && r.result?.confidence > 0],
   ["person reject", path.join(casesDir, "person_00.jpg"), (r) => r.valid_waste_image === false],
   ["blur quality reject", path.join(casesDir, "blur_24.jpg"), (r) => r.valid_waste_image === false],
 ];

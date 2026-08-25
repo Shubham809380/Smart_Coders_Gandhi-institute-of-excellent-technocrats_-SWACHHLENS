@@ -162,6 +162,7 @@ def dataset_report() -> dict:
         counts.setdefault(r["label"], {"train": 0, "val": 0, "test": 0})
         counts[r["label"]][r["split"]] += 1
     nw = json.loads((TRAINING_DIR / "nonwaste_manifest.json").read_text())
+    from train_classifier import load_nonwaste_records
     tr, va = load_nonwaste_records()
     counts["non_waste"] = {
         "train": len(tr), "val": len(va), "test": 0,

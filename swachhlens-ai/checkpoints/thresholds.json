@@ -1,118 +1,119 @@
 {
-  "conf_threshold": 0.8,
+  "conf_threshold": 0.85,
   "margin_threshold": 0.1,
+  "mode": "bce_multilabel",
   "selection_basis": "max negative-rejection subject to val coverage >= 80%",
   "sweep_top": [
     {
-      "conf": 0.8,
+      "conf": 0.5,
       "margin": 0.0,
-      "val_coverage": 0.824,
-      "known_rejected_pct": 17.6,
-      "cifar10_proxy_rejected_pct": 84.28,
-      "cifar10_proxy_f_balance": 0.8333,
-      "score": 0.8333
+      "val_coverage": 0.9803,
+      "known_rejected_pct": 1.97,
+      "nonwaste_holdout_rejected_pct": 98.42,
+      "nonwaste_holdout_f_balance": 0.9822,
+      "score": 0.9822
     },
     {
-      "conf": 0.8,
-      "margin": 0.05,
-      "val_coverage": 0.824,
-      "known_rejected_pct": 17.6,
-      "cifar10_proxy_rejected_pct": 84.28,
-      "cifar10_proxy_f_balance": 0.8333,
-      "score": 0.8333
-    },
-    {
-      "conf": 0.8,
-      "margin": 0.1,
-      "val_coverage": 0.824,
-      "known_rejected_pct": 17.6,
-      "cifar10_proxy_rejected_pct": 84.28,
-      "cifar10_proxy_f_balance": 0.8333,
-      "score": 0.8333
-    },
-    {
-      "conf": 0.75,
+      "conf": 0.55,
       "margin": 0.0,
-      "val_coverage": 0.853,
-      "known_rejected_pct": 14.7,
-      "cifar10_proxy_rejected_pct": 79.99,
-      "cifar10_proxy_f_balance": 0.8256,
-      "score": 0.8256
+      "val_coverage": 0.9701,
+      "known_rejected_pct": 2.99,
+      "nonwaste_holdout_rejected_pct": 98.77,
+      "nonwaste_holdout_f_balance": 0.9788,
+      "score": 0.9788
     },
     {
-      "conf": 0.75,
+      "conf": 0.5,
       "margin": 0.05,
-      "val_coverage": 0.853,
-      "known_rejected_pct": 14.7,
-      "cifar10_proxy_rejected_pct": 79.99,
-      "cifar10_proxy_f_balance": 0.8256,
-      "score": 0.8256
+      "val_coverage": 0.9638,
+      "known_rejected_pct": 3.62,
+      "nonwaste_holdout_rejected_pct": 98.42,
+      "nonwaste_holdout_f_balance": 0.9739,
+      "score": 0.9739
     },
     {
-      "conf": 0.75,
-      "margin": 0.1,
-      "val_coverage": 0.853,
-      "known_rejected_pct": 14.7,
-      "cifar10_proxy_rejected_pct": 79.99,
-      "cifar10_proxy_f_balance": 0.8256,
-      "score": 0.8256
-    },
-    {
-      "conf": 0.85,
+      "conf": 0.6,
       "margin": 0.0,
-      "val_coverage": 0.7766,
-      "known_rejected_pct": 22.34,
-      "cifar10_proxy_rejected_pct": 87.55,
-      "cifar10_proxy_f_balance": 0.8231,
-      "score": 0.8231
+      "val_coverage": 0.9559,
+      "known_rejected_pct": 4.41,
+      "nonwaste_holdout_rejected_pct": 98.95,
+      "nonwaste_holdout_f_balance": 0.9724,
+      "score": 0.9724
     },
     {
-      "conf": 0.85,
+      "conf": 0.55,
       "margin": 0.05,
-      "val_coverage": 0.7766,
-      "known_rejected_pct": 22.34,
-      "cifar10_proxy_rejected_pct": 87.55,
-      "cifar10_proxy_f_balance": 0.8231,
-      "score": 0.8231
+      "val_coverage": 0.9553,
+      "known_rejected_pct": 4.47,
+      "nonwaste_holdout_rejected_pct": 98.77,
+      "nonwaste_holdout_f_balance": 0.9712,
+      "score": 0.9712
     },
     {
-      "conf": 0.85,
+      "conf": 0.6,
+      "margin": 0.05,
+      "val_coverage": 0.9437,
+      "known_rejected_pct": 5.63,
+      "nonwaste_holdout_rejected_pct": 98.95,
+      "nonwaste_holdout_f_balance": 0.9661,
+      "score": 0.9661
+    },
+    {
+      "conf": 0.65,
+      "margin": 0.0,
+      "val_coverage": 0.9431,
+      "known_rejected_pct": 5.69,
+      "nonwaste_holdout_rejected_pct": 98.95,
+      "nonwaste_holdout_f_balance": 0.9657,
+      "score": 0.9657
+    },
+    {
+      "conf": 0.5,
       "margin": 0.1,
-      "val_coverage": 0.7766,
-      "known_rejected_pct": 22.34,
-      "cifar10_proxy_rejected_pct": 87.55,
-      "cifar10_proxy_f_balance": 0.8231,
-      "score": 0.8231
+      "val_coverage": 0.9434,
+      "known_rejected_pct": 5.66,
+      "nonwaste_holdout_rejected_pct": 98.42,
+      "nonwaste_holdout_f_balance": 0.9634,
+      "score": 0.9634
+    },
+    {
+      "conf": 0.55,
+      "margin": 0.1,
+      "val_coverage": 0.9365,
+      "known_rejected_pct": 6.35,
+      "nonwaste_holdout_rejected_pct": 98.77,
+      "nonwaste_holdout_f_balance": 0.9614,
+      "score": 0.9614
+    },
+    {
+      "conf": 0.65,
+      "margin": 0.05,
+      "val_coverage": 0.9332,
+      "known_rejected_pct": 6.68,
+      "nonwaste_holdout_rejected_pct": 98.95,
+      "nonwaste_holdout_f_balance": 0.9605,
+      "score": 0.9605
+    },
+    {
+      "conf": 0.6,
+      "margin": 0.1,
+      "val_coverage": 0.928,
+      "known_rejected_pct": 7.2,
+      "nonwaste_holdout_rejected_pct": 98.95,
+      "nonwaste_holdout_f_balance": 0.9577,
+      "score": 0.9577
     },
     {
       "conf": 0.7,
       "margin": 0.0,
-      "val_coverage": 0.878,
-      "known_rejected_pct": 12.2,
-      "cifar10_proxy_rejected_pct": 75.49,
-      "cifar10_proxy_f_balance": 0.8118,
-      "score": 0.8118
-    },
-    {
-      "conf": 0.7,
-      "margin": 0.05,
-      "val_coverage": 0.878,
-      "known_rejected_pct": 12.2,
-      "cifar10_proxy_rejected_pct": 75.49,
-      "cifar10_proxy_f_balance": 0.8118,
-      "score": 0.8118
-    },
-    {
-      "conf": 0.7,
-      "margin": 0.1,
-      "val_coverage": 0.878,
-      "known_rejected_pct": 12.2,
-      "cifar10_proxy_rejected_pct": 75.49,
-      "cifar10_proxy_f_balance": 0.8118,
-      "score": 0.8118
+      "val_coverage": 0.9217,
+      "known_rejected_pct": 7.83,
+      "nonwaste_holdout_rejected_pct": 99.3,
+      "nonwaste_holdout_f_balance": 0.956,
+      "score": 0.956
     }
   ],
   "negative_sets_used": [
-    "cifar10_proxy"
+    "nonwaste_holdout"
   ]
 }

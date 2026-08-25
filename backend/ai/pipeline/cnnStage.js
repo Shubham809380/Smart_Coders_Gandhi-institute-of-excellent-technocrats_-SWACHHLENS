@@ -101,7 +101,13 @@ export async function classifyMultiLabel(imageBuffer) {
   // against the top class (see mixedDominanceRatio in config).
   const presenceCut = pipelineConfig.router.mixedOverlapThreshold;
   const dominanceCut = ranked[0][1] * pipelineConfig.router.mixedDominanceRatio;
+  // ROUTING presence — deliberately strict (drives mixed-waste verification).
   const present = ranked.filter(([, p]) => p >= Math.max(presenceCut, dominanceCut)).map(([c]) => c);
+  // REPORTING is separate and looser: BCE sigmoids are area-calibrated, so a
+  // patch covering ~30% of the frame lands around 0.3-0.4. Secondary materials
+  // belong in the reported categories even when they don't trigger mixed routing.
+  const reportable = ranked.filter(([, p]) =>
+    p >= Math.min(pipelineConfig.router.reportFloor, ranked[0][1])).map(([c]) => c);
   // non_waste counts toward "present" for ambiguity purposes when in gray zone.
   if (nonWasteScore >= pipelineConfig.router.nonWasteGrayLow) present.push(NON_WASTE_CLASS);
 
@@ -132,6 +138,7 @@ export async function classifyMultiLabel(imageBuffer) {
     temperature: T,
     scores,
     present,
+    reportable,
     topClass,
     topProb: Math.round(topProbRaw * 1000) / 1000,
     secondClass,

@@ -269,12 +269,12 @@ export default function AnalyzingWaste() {
             },
           }}
         />
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mt: 1.5 }}>
-          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ letterSpacing: "0.05em", textTransform: "uppercase" }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2, mt: 2 }}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ letterSpacing: "0.05em", textTransform: "uppercase", flexShrink: 0 }}>
             {completed ? "Done" : currentStep < 0 ? "Initializing..." : `${Math.round(progress)}%`}
           </Typography>
-          <Box component="button" onClick={() => navigate("/report-waste")} sx={{ display: "flex", alignItems: "center", gap: 0.5, border: "none", background: "none", color: "text.secondary", fontWeight: 600, fontSize: 13, cursor: "pointer", transition: "color 0.2s", "&:hover": { color: "text.primary" } }}>
-            <CancelIcon sx={{ fontSize: 16 }} /> Cancel
+          <Box component="button" disabled={completed} onClick={() => navigate("/report-waste")} sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1, px: 2.5, py: 1.25, borderRadius: 3, bgcolor: "grey.100", color: "text.primary", fontWeight: 700, fontSize: 13, border: "none", cursor: completed ? "default" : "pointer", opacity: completed ? 0.4 : 1, transition: "all 0.2s", "&:hover": completed ? {} : { bgcolor: "grey.200" }, "&:active": completed ? {} : { transform: "scale(0.97)" } }}>
+            <CancelIcon sx={{ fontSize: 16 }} /> Cancel Report
           </Box>
         </Box>
       </Box>

@@ -51,8 +51,9 @@ def main() -> None:
     n_waste = len(classes) - 1 if multilabel else len(classes)
     class_to_idx = {c: i for i, c in enumerate(classes[:n_waste])}
 
-    from train_classifier import (make_model, ManifestDataset, NonWasteDataset,
-                                 build_transforms, load_nonwaste_records)
+    from train_classifier import (make_model, ManifestDataset, MultiLabelDataset,
+                                 NonWasteDataset, build_transforms,
+                                 load_nonwaste_records)
     from torch.utils.data import DataLoader, ConcatDataset
 
     img_size = int(ckpt.get("img_size", 192))
@@ -64,7 +65,7 @@ def main() -> None:
     random.shuffle(val)
     n_waste_imgs = args.max_images if multilabel else args.max_images
     ds_waste = ManifestDataset(val[:n_waste_imgs], eval_tf, class_to_idx)
-    parts.append(("waste_val", ds_waste))
+    parts.append(("waste_val", MultiLabelDataset(ds_waste, n_waste) if multilabel else ds_waste))
 
     nw_info = {"n_nonwaste": 0}
     if multilabel:

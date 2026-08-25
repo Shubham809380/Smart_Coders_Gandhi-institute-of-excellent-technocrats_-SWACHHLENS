@@ -399,6 +399,7 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
                        negatives.
     """
     n_out = len(classes) + (1 if multilabel else 0)
+    out_classes_ref = [classes + ([NON_WASTE_LABEL] if multilabel else [])]
     _, eval_tf = build_transforms(img_size)
     base_tr = PileMixDataset(by_split["train"], class_to_idx, img_size,
                              pile_prob=pile_prob, max_items=pile_max_items)
@@ -508,6 +509,21 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
                     "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
                     **extra}
             print(f"  new best macro-F1={f1:.4f}, saved", flush=True)
+            # Persist IMMEDIATELY on every improvement - a crashed/killed run
+            # must never lose the best weights (bit us once: 6h of training
+            # died at e5 and the end-of-run save never happened).
+            if multilabel:
+                try:
+                    torch.save({
+                        "arch": arch, "classes": out_classes_ref[0], "img_size": img_size,
+                        "loss": "bce_multilabel",
+                        "state_dict": best["state"],
+                        "metrics": {"val_macro_f1": round(f1, 4), "val_acc": round(acc, 4),
+                                    "epoch": epoch, **extra},
+                    }, CKPT_DIR / "best_classifier.pth")
+                    print("  checkpoint flushed to disk", flush=True)
+                except Exception as se:  # noqa: BLE001
+                    print(f"  WARN: periodic save failed: {se}", flush=True)
         # crude early stop: no improvement in 3 epochs
         if epoch - best["epoch"] >= 3:
             print("  early stop")

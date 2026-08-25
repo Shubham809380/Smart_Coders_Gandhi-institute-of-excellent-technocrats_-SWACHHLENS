@@ -46,9 +46,11 @@ export function fuseResults(cnn, gv, decision) {
     if (decision.action === "verify_gemini" && ambiguousSolo) {
       reviewReasons2.push("gemini_unavailable_on_ambiguous_case");
     }
-    // Multi-label contract holds even solo: report every co-present class.
-    const soloCats = cnn.present
-      .filter((c) => c !== "non_waste")
+    // Multi-label contract holds even solo: report every class above the
+    // reporting floor (looser than the routing presence set).
+    const soloSource = cnn.reportable?.length ? cnn.reportable : cnn.present.filter((c) => c !== "non_waste");
+    const soloCats = soloSource
+      .filter((c) => c !== "non_waste" && (cnn.scores[c] ?? 0) >= 0.2)
       .map((c) => ({ category: c, confidence: Math.round(cnn.scores[c] * 1000) / 1000 }))
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, 5);

@@ -119,7 +119,7 @@ def _parity_samples(img_size: int, classes: list[str], multilabel: bool, n: int)
     xs = []
     for p in paths[:n]:
         if p.exists():
-            xs.append(tf(Image.open(p).convert("RGB")))
+            xs.append(tf(Image.open(p).convert("RGB")).unsqueeze(0))  # [1,C,H,W]
     while len(xs) < 2:
         xs.append(torch.randn(1, 3, img_size, img_size))
     return xs
