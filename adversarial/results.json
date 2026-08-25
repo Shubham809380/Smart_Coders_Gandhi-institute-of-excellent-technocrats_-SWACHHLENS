@@ -1,0 +1,284 @@
+{
+ "mode": "offline",
+ "rows": [
+  {
+   "id": "person_only_00",
+   "type": "person_only",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "person_only_01",
+   "type": "person_only",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "person_only_02",
+   "type": "person_only",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "person_only_03",
+   "type": "person_only",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "person_only_04",
+   "type": "person_only",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "person_only_05",
+   "type": "person_only",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "waste_single_06",
+   "type": "waste_single",
+   "expected": "accept_waste",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": false,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "waste_single_07",
+   "type": "waste_single",
+   "expected": "accept_waste",
+   "outcome": "accept(textile+glass) MIXED REVIEW PROVISIONAL",
+   "pass": true,
+   "review": true,
+   "nonWaste": 0.337
+  },
+  {
+   "id": "waste_single_08",
+   "type": "waste_single",
+   "expected": "accept_waste",
+   "outcome": "accept(metal+glass) MIXED REVIEW PROVISIONAL",
+   "pass": true,
+   "review": true,
+   "nonWaste": 0
+  },
+  {
+   "id": "waste_single_09",
+   "type": "waste_single",
+   "expected": "accept_waste",
+   "outcome": "accept(cardboard) PROVISIONAL",
+   "pass": true,
+   "review": false,
+   "nonWaste": 0
+  },
+  {
+   "id": "mixed_pile_10",
+   "type": "mixed_pile",
+   "expected": "mixed_detected",
+   "outcome": "accept(plastic+paper+metal) MIXED REVIEW PROVISIONAL",
+   "pass": true,
+   "review": true,
+   "nonWaste": 0.11
+  },
+  {
+   "id": "mixed_pile_11",
+   "type": "mixed_pile",
+   "expected": "mixed_detected",
+   "outcome": "accept(metal+organic) MIXED REVIEW PROVISIONAL",
+   "pass": true,
+   "review": true,
+   "nonWaste": 0.18
+  },
+  {
+   "id": "mixed_pile_12",
+   "type": "mixed_pile",
+   "expected": "mixed_detected",
+   "outcome": "reject[router] non_waste_dominant (0.692)",
+   "pass": false,
+   "review": false,
+   "nonWaste": 0.692
+  },
+  {
+   "id": "waste_plus_person_13",
+   "type": "waste_plus_person",
+   "expected": "waste_survives",
+   "outcome": "accept(plastic+paper) MIXED REVIEW PROVISIONAL",
+   "pass": true,
+   "review": true,
+   "nonWaste": 0.154
+  },
+  {
+   "id": "ood_object_14",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "ood_object_15",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "ood_object_16",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "ood_object_17",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "ood_object_18",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "ood_object_19",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "ood_object_20",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "ood_object_21",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "ood_object_22",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "accept(paper) PROVISIONAL",
+   "pass": false,
+   "review": false,
+   "nonWaste": 0
+  },
+  {
+   "id": "ood_object_23",
+   "type": "ood_object",
+   "expected": "reject_any",
+   "outcome": "accept(paper) PROVISIONAL",
+   "pass": false,
+   "review": false,
+   "nonWaste": 0
+  },
+  {
+   "id": "quality_blur_24",
+   "type": "quality_blur",
+   "expected": "reject_quality",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "quality_dark_25",
+   "type": "quality_dark",
+   "expected": "reject_quality",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  },
+  {
+   "id": "quality_tiny_26",
+   "type": "quality_tiny",
+   "expected": "reject_quality",
+   "outcome": "reject[quality] Photo is too blurry. Please retake a steady, focused p",
+   "pass": true,
+   "review": false,
+   "nonWaste": null
+  }
+ ],
+ "byType": {
+  "person_only": {
+   "total": 6,
+   "passed": 6
+  },
+  "waste_single": {
+   "total": 4,
+   "passed": 3
+  },
+  "mixed_pile": {
+   "total": 3,
+   "passed": 2
+  },
+  "waste_plus_person": {
+   "total": 1,
+   "passed": 1
+  },
+  "ood_object": {
+   "total": 10,
+   "passed": 8
+  },
+  "quality_blur": {
+   "total": 1,
+   "passed": 1
+  },
+  "quality_dark": {
+   "total": 1,
+   "passed": 1
+  },
+  "quality_tiny": {
+   "total": 1,
+   "passed": 1
+  }
+ },
+ "totalPass": 23,
+ "total": 27
+}

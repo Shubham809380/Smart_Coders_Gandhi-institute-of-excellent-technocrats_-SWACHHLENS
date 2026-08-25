@@ -640,18 +640,43 @@ export async function handleApiRequest(req, res) {
         console.error("[detect-waste] pipeline error:", err.message);
         return json(res, 500, { error: { code: "PIPELINE_FAILED", message: "Analysis could not be completed. Please try again." } });
       }
-      // Hard-negative mining feed: every verdict is logged with its trace so
-      // corrected outcomes can be mined back into the next training round
-      // (see TRAINING GUIDANCE in ai/pipeline/config.js).
+      if (!result.accepted) {
+        // Hard-negative mining feed: rejections are logged with their trace so
+        // corrected outcomes can be mined back into the next training round
+        // (see TRAINING GUIDANCE in ai/pipeline/config.js).
+        store.logInference({
+          userId: auth.user.uid,
+          outcome: "hybrid_rejected",
+          provider: "hybrid_gemini_cnn",
+          reason: result.rejected?.reason || "",
+        }).catch(() => {});
+      }
+      const { mapHybridToApp } = await import("./ai/pipeline/mapToApp.js");
+      const analysis = await mapHybridToApp(result);
+      if (!analysis.valid_waste_image) {
+        return json(res, 200, analysis);
+      }
+      // Duplicate detection parity with the legacy analyze flow.
+      let duplicateMatch = null;
+      try {
+        const duplicate = await findDuplicateMatch({ location: body.location || null, aiAnalysis: analysis.result });
+        const priority = calculatePriority(analysis.result, { address: body.location?.address || "", duplicateSupportCount: duplicate.isPotentialDuplicate ? 1 : 0, ageHours: 0 });
+        analysis.result.priorityScore = priority.score;
+        if (duplicate.isPotentialDuplicate) {
+          duplicateMatch = { reportId: duplicate.primaryReportId, distance: `${duplicate.distanceMeters}m away`, status: "Possible duplicate" };
+        }
+      } catch (dupErr) {
+        console.warn("[detect-waste] duplicate check failed:", dupErr.message);
+      }
       store.logInference({
         userId: auth.user.uid,
-        outcome: result.accepted ? "hybrid_accepted" : "hybrid_rejected",
+        outcome: result.requires_human_review ? "hybrid_review" : "hybrid_accepted",
         provider: "hybrid_gemini_cnn",
-        wasteType: result.waste_type || "",
-        confidence: result.categories?.[0]?.confidence || 0,
-        reason: result.rejected?.reason || (result.requires_human_review ? `review:${(result.review_reasons || []).join(";")}` : ""),
+        wasteType: analysis.result.wasteType || "",
+        confidence: analysis.result.confidence || 0,
+        processingMs: result.processing_ms || 0,
       }).catch(() => {});
-      return json(res, 200, result);
+      return json(res, 200, { ...analysis, duplicateMatch });
     }
 
     if (pathname === "/api/ai/analyze" && req.method === "POST") {
@@ -1409,11 +1434,11 @@ return json(res, 200, { ok: true, report: formatReportForClient(report) });
         return json(res, 400, { error: { code: "NO_AFTER_PHOTO", message: "No after-cleanup photo submitted yet for this complaint." } });
       }
       try {
-        const imgRes = await fetch(report.afterMedia.imageUrl);
-        if (!imgRes.ok) throw new Error(`image fetch failed (${imgRes.status})`);
-        const buf = Buffer.from(await imgRes.arrayBuffer());
-        const mime = imgRes.headers.get("content-type") || "image/jpeg";
-        const analysis = await aiProvider.analyzeWaste({ image: `data:${mime};base64,${buf.toString("base64")}` });
+        // toDataUrlIfLocal reads Postgres blobs directly — relative /uploads/
+        // URLs cannot be fetched from inside a serverless function.
+        const dataUrl = await toDataUrlIfLocal(report.afterMedia.imageUrl);
+        if (!dataUrl) throw new Error("after-photo is not readable");
+        const analysis = await aiProvider.analyzeWaste({ image: dataUrl });
         await store.updateReport(reportId, { aiAfterAnalysis: analysis });
         return json(res, 200, { analysis, cached: false });
       } catch (err) {

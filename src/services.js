@@ -540,9 +540,13 @@ export const aiService = {
         if (!draft.image) throw new Error("Please capture or upload a photo first.");
         const steps = ["Detecting waste boundaries", "Classifying waste type", "Estimating volume", "Checking severity level", "Generating priority score"];
         for (const step of steps) { await delay(300); draft.onProgress?.(step); }
-        const data = await api("/ai/analyze", {
+        // Hybrid pipeline endpoint (quality gate -> CNN multi-label -> conditional
+        // Gemini verification -> conservative fusion). Response already matches
+        // the legacy contract ({valid_waste_image, result, duplicateMatch}).
+        const data = await api("/detect-waste", {
             method: "POST",
             body: JSON.stringify({ image: draft.image || "", comment: draft.comment || "", location: draft.location || {}, mediaType: draft.mediaType || "image" }),
+            timeoutMs: 45000,
         });
         return data;
     },

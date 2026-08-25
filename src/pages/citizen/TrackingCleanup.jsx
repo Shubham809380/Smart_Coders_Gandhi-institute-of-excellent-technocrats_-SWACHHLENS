@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { reportService, teamService } from '../../services.js';
 import GoogleMap from '../../components/GoogleMap.jsx';
+import SafeImage from '../../components/SafeImage.jsx';
 import { useTheme } from '../../contexts/ThemeContext.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { useLive } from '../../hooks/useLive.js';
@@ -241,7 +242,7 @@ export default function TrackingCleanup() {
               animation: rm ? 'none' : `${fadeIn} 0.5s ease 0.1s both`,
             }}>
               <Box sx={{ position:'relative', height:192, bgcolor: isDark ? '#1a2030' : '#E8ECF1' }}>
-                <Box component="img" src={report.image} alt="Report" sx={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                <SafeImage src={report.image} alt="Report" className="w-full h-full object-cover" />
                 <Box sx={{ position:'absolute', inset:0, background:`linear-gradient(to top, ${T.canvas}, transparent 45%)` }} />
                 {report.severity && (
                   <Box sx={{ position:'absolute', top:12, left:12, bgcolor:'rgba(0,0,0,0.5)', backdropFilter:'blur(8px)', WebkitBackdropFilter:'blur(8px)',
@@ -287,7 +288,7 @@ export default function TrackingCleanup() {
               </Box>
               <Box sx={{ px:2.5, pb:2.5, display:'flex', gap:1.5 }}>
                 <Box sx={{ flex:1, position:'relative', borderRadius:1.5, overflow:'hidden', bgcolor: isDark ? '#1a2030' : '#E8ECF1' }}>
-                  <Box component="img" src={report.image || report.beforeImage} alt="Before cleanup" sx={{ width:'100%', height:130, objectFit:'cover', display:'block' }} />
+                  <SafeImage src={report.image || report.beforeImage} alt="Before cleanup" className="w-full h-[130px] object-cover block" iconSize="text-[18px]" />
                   <Box sx={{ position:'absolute', top:6, left:6, bgcolor:'rgba(0,0,0,0.55)', backdropFilter:'blur(6px)', borderRadius:1, px:1, py:0.25 }}>
                     <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:9, fontWeight:700, color:'#fff', letterSpacing:'0.06em' }}>BEFORE</span>
                   </Box>
@@ -296,7 +297,7 @@ export default function TrackingCleanup() {
                   <span className="material-symbols-outlined" style={{ fontSize:18, color:T.sevLow }}>arrow_forward</span>
                 </Box>
                 <Box sx={{ flex:1, position:'relative', borderRadius:1.5, overflow:'hidden', bgcolor: isDark ? '#1a2030' : '#E8ECF1' }}>
-                  <Box component="img" src={report.afterImage} alt="After cleanup" sx={{ width:'100%', height:130, objectFit:'cover', display:'block' }} />
+                  <SafeImage src={report.afterImage} alt="After cleanup" className="w-full h-[130px] object-cover block" iconSize="text-[18px]" />
                   <Box sx={{ position:'absolute', top:6, left:6, bgcolor:T.sevLow, borderRadius:1, px:1, py:0.25 }}>
                     <span style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:9, fontWeight:700, color:'#fff', letterSpacing:'0.06em' }}>AFTER</span>
                   </Box>

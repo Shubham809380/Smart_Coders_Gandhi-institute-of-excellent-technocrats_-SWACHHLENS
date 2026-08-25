@@ -1,3 +1,37 @@
+// Camera photos are 3-8MB raw — far past Vercel's request limits and slow to
+// upload on mobile data. Downscale+re-encode before anything leaves the device.
+export function fileToCompressedDataUrl(file, maxDim = 1280, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    if (!file) { reject(new Error("No photo selected.")); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the captured photo."));
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not process the captured photo."));
+      img.onload = () => {
+        try {
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            const ratio = Math.min(maxDim / w, maxDim / h);
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch (err) {
+          reject(new Error("Could not compress the captured photo."));
+        }
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export function haversineKm(a, b) {
   const toRad = (v) => (v * Math.PI) / 180;
   const R = 6371;

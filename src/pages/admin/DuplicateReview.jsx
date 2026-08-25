@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AdminLayout from "../../components/admin/AdminLayout.jsx";
+import SafeImage from "../../components/SafeImage.jsx";
 import { Chip, StatusChip, Icon, Spinner, TableSkeleton, EmptyState, ErrorState, relativeTime, wasteTypeLabel } from "../../components/admin/ui.jsx";
 import { adminService } from "../../services.js";
 import { useLive } from "../../hooks/useLive.js";
@@ -144,12 +145,11 @@ export default function DuplicateReview() {
                       onChange={() => handleSelect(group.groupId, report.id)}
                       className="accent-[var(--adm-primary)] w-4 h-4"
                     />
-                    <img
+                    <SafeImage
                       src={report.image}
                       alt={`Waste report ${report.id}`}
                       className="w-12 h-12 rounded-lg object-cover shrink-0"
-                      style={{ background: "var(--adm-surface-2)" }}
-                      loading="lazy"
+                      iconSize="text-[16px]"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-0.5">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
+import SafeImage from "../../components/SafeImage.jsx";
 import { reportService } from "../../services.js";
 
 export default function TeamTasks() {
@@ -151,10 +152,11 @@ export default function TeamTasks() {
                 className={`relative w-full ${isHigh ? "h-44" : "h-36"}`}
               >
                 {task.image ? (
-                  <img
+                  <SafeImage
                     className="w-full h-full object-cover"
                     alt={task.wasteType}
                     src={task.image}
+                    iconSize="text-[36px]"
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-50 flex items-center justify-center">

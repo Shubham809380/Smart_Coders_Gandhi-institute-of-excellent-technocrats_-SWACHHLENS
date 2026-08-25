@@ -1,38 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { workerService, aiService } from "../../services.js";
+import { fileToCompressedDataUrl } from "../../utils/helpers.js";
 
 const volOptions = ["small", "medium", "large", "very_large"];
 const volLabels = { small: "Small", medium: "Medium", large: "Large", very_large: "Very Large" };
-
-// Camera photos are 3-8MB raw — far past Vercel's request limits and slow to
-// upload on mobile data. Downscale+re-encode before anything leaves the device.
-function fileToCompressedDataUrl(file, maxDim = 1280, quality = 0.72) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Could not read the captured photo."));
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("Could not process the captured photo."));
-      img.onload = () => {
-        let w = img.width;
-        let h = img.height;
-        if (w > maxDim || h > maxDim) {
-          const ratio = Math.min(maxDim / w, maxDim / h);
-          w = Math.round(w * ratio);
-          h = Math.round(h * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function CompleteCleanup() {
   const navigate = useNavigate();
@@ -170,7 +142,7 @@ export default function CompleteCleanup() {
             {/* Before reference: match the angle so admins can compare instantly. */}
             {report?.image && (
               <div className="relative w-full rounded-xl overflow-hidden border border-gray-200 mb-4">
-                <img src={report.image} alt="Before reference" className="w-full h-36 object-cover" />
+                <SafeImage src={report.image} alt="Before reference" className="w-full h-36 object-cover" iconSize="text-[20px]" />
                 <span className="absolute top-2 left-2 bg-black/55 text-[10px] font-bold text-white px-2 py-0.5 rounded">BEFORE — match this angle</span>
               </div>
             )}
@@ -210,7 +182,7 @@ export default function CompleteCleanup() {
             {report?.image && (
               <div className="flex gap-3 mb-5">
                 <div className="flex-1 rounded-xl overflow-hidden border border-gray-200 relative">
-                  <img src={report.image} alt="Before" className="w-full h-28 object-cover" />
+                  <SafeImage src={report.image} alt="Before" className="w-full h-28 object-cover" iconSize="text-[16px]" />
                   <span className="absolute top-2 left-2 bg-black/55 text-[10px] font-bold text-white px-2 py-0.5 rounded">BEFORE</span>
                 </div>
                 <div className="flex-1 rounded-xl overflow-hidden border border-gray-200 relative">
@@ -251,7 +223,7 @@ export default function CompleteCleanup() {
             <div className="flex gap-3 mb-5">
               {report?.image && (
                 <div className="flex-1 rounded-xl overflow-hidden border border-gray-200 relative">
-                  <img src={report.image} alt="Before" className="w-full h-32 object-cover" />
+                  <SafeImage src={report.image} alt="Before" className="w-full h-32 object-cover" iconSize="text-[18px]" />
                   <span className="absolute top-2 left-2 bg-black/55 text-[10px] font-bold text-white px-2 py-0.5 rounded">BEFORE</span>
                 </div>
               )}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import AdminSidebar from '../../components/AdminSidebar.jsx';
 import GoogleMap from '../../components/GoogleMap.jsx';
+import SafeImage from '../../components/SafeImage.jsx';
 import { reportService, teamService } from '../../services.js';
 
 export default function SmartDispatch() {
@@ -78,7 +79,7 @@ export default function SmartDispatch() {
             {/* Report Image */}
             {report?.image && (
               <div className="relative w-full aspect-video rounded-3xl overflow-hidden shadow-md border border-black/[0.04]" style={{ boxShadow: "0 8px 24px -6px rgba(0,0,0,0.15)" }}>
-                <img className="w-full h-full object-cover" alt="Waste report" src={report.image} />
+                <SafeImage className="w-full h-full object-cover" alt="Waste report" src={report.image} iconSize="text-[36px]" />
                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-black/[0.04]">
                   <span className="material-symbols-outlined text-[16px] text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
                   <span className="text-[12px] font-bold text-on-surface">AI Verified</span>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
+import SafeImage from "../../components/SafeImage.jsx";
 import { workerService, authService } from "../../services.js";
 import { haversineKm, timeSince } from "../../utils/helpers.js";
 import { useLive } from "../../hooks/useLive.js";
@@ -306,13 +307,7 @@ export default function WorkerTasks() {
                 <div className={`w-2 shrink-0 ${severityColor[task.severity] || "bg-gray-300"}`} />
                 <div className="flex-1 flex items-center p-4 gap-4 min-w-0">
                   <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-gray-100 border border-gray-100">
-                    {task.image ? (
-                      <img src={task.image} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <span className="material-symbols-outlined text-gray-300">photo</span>
-                      </div>
-                    )}
+                    <SafeImage src={task.image} className="w-full h-full object-cover" iconSize="text-[20px]" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">

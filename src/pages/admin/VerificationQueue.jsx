@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AdminLayout from "../../components/admin/AdminLayout.jsx";
+import SafeImage from "../../components/SafeImage.jsx";
 import { Chip, StatusChip, Icon, Spinner, Skeleton, EmptyState, ErrorState, relativeTime, wasteTypeLabel } from "../../components/admin/ui.jsx";
 import { adminService } from "../../services.js";
 import { useLive } from "../../hooks/useLive.js";
@@ -145,7 +146,7 @@ export default function VerificationQueue() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[["Before", r.beforeImage], ["After", r.afterImage]].map(([label, src]) => (
                   <figure key={label} className="rounded-lg overflow-hidden border adm-border-c">
-                    {src ? <img src={src} alt={`${label} photo`} className="w-full h-44 object-cover" loading="lazy" />
+                    {src ? <SafeImage src={src} alt={`${label} photo`} className="w-full h-44 object-cover" iconSize="text-[24px]" />
                       : <div className="w-full h-44 flex items-center justify-center adm-raised-bg adm-muted text-xs">No photo</div>}
                     <figcaption className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest adm-muted">{label}</figcaption>
                   </figure>

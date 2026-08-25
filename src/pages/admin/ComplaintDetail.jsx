@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AdminLayout from "../../components/admin/AdminLayout.jsx";
+import SafeImage from "../../components/SafeImage.jsx";
 import { PriorityRing, Chip, StatusChip, SeverityChip, Icon, Spinner, Skeleton, ErrorState, relativeTime, wasteTypeLabel, volumeLabel } from "../../components/admin/ui.jsx";
 import { adminService } from "../../services.js";
 import { useLive } from "../../hooks/useLive.js";
@@ -97,7 +98,7 @@ function AiVerifyPanel({ report, onDone }) {
       <div className="grid grid-cols-2 gap-2">
         {[["Before", report.beforeImage], ["After", report.afterImage]].map(([label, src]) => src && (
           <figure key={label} className="rounded-lg overflow-hidden border adm-border-c">
-            <img src={src} alt={`${label} cleanup`} className="w-full h-36 object-cover" loading="lazy" />
+            <SafeImage src={src} alt={`${label} cleanup`} className="w-full h-36 object-cover" iconSize="text-[20px]" />
             <figcaption className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest adm-muted">{label}</figcaption>
           </figure>
         ))}
@@ -238,12 +239,12 @@ export default function ComplaintDetail() {
             {/* Photos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <figure className="adm-card overflow-hidden">
-                <img src={report.beforeImage} alt="Before cleanup" className="w-full h-64 object-cover" />
+                <SafeImage src={report.beforeImage} alt="Before cleanup" className="w-full h-64 object-cover" iconSize="text-[28px]" />
                 <figcaption className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest adm-muted">Reported photo</figcaption>
               </figure>
               <figure className="adm-card overflow-hidden">
                 {report.afterImage ? (
-                  <img src={report.afterImage} alt="After cleanup" className="w-full h-64 object-cover" />
+                  <SafeImage src={report.afterImage} alt="After cleanup" className="w-full h-64 object-cover" iconSize="text-[28px]" />
                 ) : (
                   <div className="w-full h-64 flex flex-col items-center justify-center adm-raised-bg adm-muted gap-2">
                     <Icon name="eye" size={22} />

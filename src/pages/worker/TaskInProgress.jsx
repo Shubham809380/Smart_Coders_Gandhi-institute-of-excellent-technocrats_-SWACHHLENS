@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { reportService } from "../../services.js";
+import { fileToCompressedDataUrl } from "../../utils/helpers.js";
+import SafeImage from "../../components/SafeImage.jsx";
 
 export default function TaskInProgress() {
   const navigate = useNavigate();
@@ -10,6 +12,7 @@ export default function TaskInProgress() {
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -49,19 +52,18 @@ export default function TaskInProgress() {
   const handleComplete = async () => {
     if (!report.id || !photoFile) return;
     setUploading(true);
+    setSubmitError("");
     try {
-      const reader = new FileReader();
-      const dataUrl = await new Promise((resolve, reject) => {
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(photoFile);
-      });
+      // Compress on-device first: raw camera photos (3-8MB) inflate past the
+      // server's request body limit as base64 and the upload silently dies.
+      const dataUrl = await fileToCompressedDataUrl(photoFile);
       await reportService.updateReportStatus(report.id, "verification", {
         afterImage: dataUrl,
       });
       navigate("/worker/tasks");
     } catch (err) {
       console.error("Failed to complete task:", err);
+      setSubmitError(err?.message || "Upload failed. Check your connection and try again.");
       setUploading(false);
     }
   };
@@ -136,6 +138,25 @@ export default function TaskInProgress() {
         </div>
       )}
 
+      {submitError && (
+        <div className="mx-4 mt-4 bg-red-50 border border-red-200 rounded-2xl p-4 flex gap-3 items-start">
+          <span
+            className="material-symbols-outlined text-red-500 shrink-0"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            error
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-bold text-red-800">
+              Could not upload the after photo
+            </span>
+            <span className="text-xs text-red-600 leading-relaxed">
+              {submitError} Your progress is saved — pick the photo again and retry.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="px-4 mt-5 flex-1 pb-4 flex flex-col gap-5">
         {report.image && (
           <div>
@@ -143,7 +164,7 @@ export default function TaskInProgress() {
               Reference: Initial State
             </h2>
             <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-sm border border-gray-100">
-              <img
+              <SafeImage
                 className="w-full h-full object-cover"
                 alt="Before cleanup"
                 src={report.image}

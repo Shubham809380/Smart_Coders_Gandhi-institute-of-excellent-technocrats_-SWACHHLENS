@@ -145,7 +145,26 @@ export async function classifyBuffer(imageBuffer) {
     const session = await getSession();
     const input = new ort.Tensor("float32", await preprocessToTensor(imageBuffer), [1, 3, IMG_SIZE, IMG_SIZE]);
     const { logits } = await session.run({ input });
-    const probs = softmax(Array.from(logits.data));
+    const raw = Array.from(logits.data);
+    // BCE multi-label checkpoints (loss:"bce_multilabel" in meta) carry an
+    // 11th trained reject class; softmax over those logits is meaningless.
+    const multilabel = st.meta.loss === "bce_multilabel";
+    const nwIdx = st.meta.classes.indexOf("non_waste");
+    let probs;
+    if (multilabel) {
+      probs = raw.map((z) => 1 / (1 + Math.exp(-z)));
+      const nwProb = probs[nwIdx];
+      if (nwProb >= 0.5) {
+        return {
+          checked: true, is_waste: false, category: "non_waste", wasteType: "unknown",
+          confidence: Math.round(nwProb * 1000) / 10,
+          margin: 0, status: "rejected", rejection_reason: "non_waste_class",
+          top_predictions: [], decision_rule: { mode: "bce_multilabel", non_waste: Math.round(nwProb * 1000) / 1000 },
+        };
+      }
+    } else {
+      probs = softmax(raw);
+    }
 
     const order = probs.map((p, i) => [p, i]).sort((a, b) => b[0] - a[0]);
     const topPredictions = order.slice(0, 3).map(([p, i]) => ({

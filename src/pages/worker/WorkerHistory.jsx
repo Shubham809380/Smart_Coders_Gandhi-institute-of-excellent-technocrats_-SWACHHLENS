@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkerBottomNav from "../../components/WorkerBottomNav.jsx";
+import SafeImage from "../../components/SafeImage.jsx";
 import { workerService } from "../../services.js";
 import { timeSince } from "../../utils/helpers.js";
 import { useLive } from "../../hooks/useLive.js";
@@ -126,13 +127,13 @@ export default function WorkerHistory() {
                     <div className="flex gap-3 p-4">
                       {task.image && (
                         <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 relative">
-                          <img src={task.image} alt="Before" className="w-full h-full object-cover" />
+                          <SafeImage src={task.image} alt="Before" className="w-full h-full object-cover" iconSize="text-[18px]" />
                           <span className="absolute bottom-0 left-0 right-0 bg-black/55 text-[8px] font-bold text-white text-center py-0.5">Before</span>
                         </div>
                       )}
                       {task.afterImage && (
                         <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 relative">
-                          <img src={task.afterImage} alt="After" className="w-full h-full object-cover" />
+                          <SafeImage src={task.afterImage} alt="After" className="w-full h-full object-cover" iconSize="text-[18px]" />
                           <span className="absolute bottom-0 left-0 right-0 bg-emerald-600/80 text-[8px] font-bold text-white text-center py-0.5">After</span>
                         </div>
                       )}

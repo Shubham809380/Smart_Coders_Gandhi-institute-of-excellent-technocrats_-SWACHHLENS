@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
+import SafeImage from "../../components/SafeImage.jsx";
 import { workerService, reportService } from "../../services.js";
 import { useLive } from "../../hooks/useLive.js";
 
@@ -137,7 +138,7 @@ export default function TaskDetail() {
       <div className="flex-1 overflow-y-auto pb-32 max-w-lg mx-auto w-full">
         {report.image ? (
           <div className="relative w-full aspect-video bg-gray-100">
-            <img src={report.image} alt="" className="w-full h-full object-cover" />
+            <SafeImage src={report.image} className="w-full h-full object-cover" iconSize="text-[40px]" />
             <div className="absolute top-3 left-3 bg-black/55 backdrop-blur-sm px-3 py-1.5 rounded-lg">
               <span className="text-[11px] font-extrabold text-white uppercase">Before</span>
             </div>

@@ -288,6 +288,30 @@ const MEDIA_MIME_BY_EXT = {
 const MAX_BLOB_CHARS = 12 * 1024 * 1024;
 
 /**
+ * Server-side safety net: re-encode an oversized data URL with sharp so a
+ * photo is never silently dropped. Returns { mimeType, base64 } or null when
+ * sharp is unavailable / still too large.
+ */
+async function shrinkOversizedDataUrl(mimeType, base64, originalChars) {
+  try {
+    const sharpModule = await import("sharp");
+    const sharp = sharpModule.default;
+    const buffer = await sharp(Buffer.from(base64, "base64"))
+      .rotate()
+      .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 72 })
+      .toBuffer();
+    const shrunk = buffer.toString("base64");
+    if (shrunk.length >= originalChars) return null;
+    console.warn(`[media] oversized upload shrunk ${Math.round(originalChars / 1024)}KB -> ${Math.round(shrunk.length / 1024)}KB base64`);
+    return { mimeType: "image/jpeg", base64: shrunk };
+  } catch (err) {
+    console.warn("[media] sharp fallback failed:", err?.message || err);
+    return null;
+  }
+}
+
+/**
  * Persists a data-URL upload. Media lives in Postgres (media_blobs) because
  * serverless filesystems are ephemeral — files written to /tmp vanish between
  * invocations, which is exactly why report photos went missing in production.
@@ -296,27 +320,38 @@ export async function saveDataUrlMedia(dataUrl, relativePathPrefix) {
   if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) return { url: "", storagePath: "" };
   const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
   if (!match) throw new Error("invalid-media");
-  const mimeType = match[1];
-  const base64 = match[2];
-  const ext = mimeType.includes("png") ? ".png" : mimeType.includes("webp") ? ".webp" : mimeType.includes("mp4") ? ".mp4" : ".jpg";
-  const storagePath = `${relativePathPrefix}${ext}`;
+  let mimeType = match[1];
+  let base64 = match[2];
+  let ext = mimeType.includes("png") ? ".png" : mimeType.includes("webp") ? ".webp" : mimeType.includes("mp4") ? ".mp4" : ".jpg";
   if (base64.length > MAX_BLOB_CHARS) {
-    console.warn(`[media] ${storagePath} too large to persist (${Math.round(base64.length / 1024)}KB base64) — skipping`);
-    return { url: "", storagePath };
+    // Never lose the photo: downscale server-side and store the result.
+    const shrunk = await shrinkOversizedDataUrl(mimeType, base64, base64.length);
+    if (!shrunk) {
+      console.warn(`[media] ${relativePathPrefix} still too large after compression (${Math.round(base64.length / 1024)}KB base64) — skipping`);
+      return { url: "", storagePath: `${relativePathPrefix}${ext}` };
+    }
+    mimeType = shrunk.mimeType;
+    base64 = shrunk.base64;
+    ext = ".jpg";
   }
-  try {
-    await query(
-      `INSERT INTO media_blobs (storage_path, mime_type, data_base64, byte_size)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (storage_path) DO UPDATE
-         SET mime_type = EXCLUDED.mime_type, data_base64 = EXCLUDED.data_base64, byte_size = EXCLUDED.byte_size`,
-      [storagePath, mimeType, base64, Buffer.byteLength(base64)]
-    );
-  } catch (err) {
-    console.error(`[media] DB persist failed for ${storagePath}:`, err?.message || err);
-    return { url: "", storagePath };
+  const storagePath = `${relativePathPrefix}${ext}`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await query(
+        `INSERT INTO media_blobs (storage_path, mime_type, data_base64, byte_size)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (storage_path) DO UPDATE
+           SET mime_type = EXCLUDED.mime_type, data_base64 = EXCLUDED.data_base64, byte_size = EXCLUDED.byte_size`,
+        [storagePath, mimeType, base64, Buffer.byteLength(base64)]
+      );
+      return { url: `/uploads/${storagePath}`, storagePath };
+    } catch (err) {
+      // One retry rides out transient Neon cold-start/connection blips; a
+      // silent empty URL here means a report with no photo anywhere.
+      console.error(`[media] DB persist attempt ${attempt}/2 failed for ${storagePath}:`, err?.message || err);
+    }
   }
-  return { url: `/uploads/${storagePath}`, storagePath };
+  return { url: "", storagePath };
 }
 
 /** Reads a persisted media blob. Returns { mimeType, buffer } or null. */
