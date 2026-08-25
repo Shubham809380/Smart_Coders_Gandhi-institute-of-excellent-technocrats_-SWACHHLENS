@@ -1,0 +1,194 @@
+[
+ {
+  "id": "person_only_00",
+  "type": "person_only",
+  "expected": "reject_any",
+  "file": "person_00.jpg"
+ },
+ {
+  "id": "person_only_01",
+  "type": "person_only",
+  "expected": "reject_any",
+  "file": "person_01.jpg"
+ },
+ {
+  "id": "person_only_02",
+  "type": "person_only",
+  "expected": "reject_any",
+  "file": "person_02.jpg"
+ },
+ {
+  "id": "person_only_03",
+  "type": "person_only",
+  "expected": "reject_any",
+  "file": "person_03.jpg"
+ },
+ {
+  "id": "person_only_04",
+  "type": "person_only",
+  "expected": "reject_any",
+  "file": "person_04.jpg"
+ },
+ {
+  "id": "person_only_05",
+  "type": "person_only",
+  "expected": "reject_any",
+  "file": "person_05.jpg"
+ },
+ {
+  "id": "waste_single_06",
+  "type": "waste_single",
+  "expected": "accept_waste",
+  "file": "waste_plastic_06.jpg",
+  "label": "plastic"
+ },
+ {
+  "id": "waste_single_07",
+  "type": "waste_single",
+  "expected": "accept_waste",
+  "file": "waste_glass_07.jpg",
+  "label": "glass"
+ },
+ {
+  "id": "waste_single_08",
+  "type": "waste_single",
+  "expected": "accept_waste",
+  "file": "waste_metal_08.jpg",
+  "label": "metal"
+ },
+ {
+  "id": "waste_single_09",
+  "type": "waste_single",
+  "expected": "accept_waste",
+  "file": "waste_cardboard_09.jpg",
+  "label": "cardboard"
+ },
+ {
+  "id": "mixed_pile_10",
+  "type": "mixed_pile",
+  "expected": "mixed_detected",
+  "file": "pile_plastic_paper_10.jpg",
+  "labels": [
+   "plastic",
+   "paper"
+  ]
+ },
+ {
+  "id": "mixed_pile_11",
+  "type": "mixed_pile",
+  "expected": "mixed_detected",
+  "file": "pile_metal_organic_11.jpg",
+  "labels": [
+   "metal",
+   "organic"
+  ]
+ },
+ {
+  "id": "mixed_pile_12",
+  "type": "mixed_pile",
+  "expected": "mixed_detected",
+  "file": "pile_textile_cardboard_12.jpg",
+  "labels": [
+   "textile",
+   "cardboard"
+  ]
+ },
+ {
+  "id": "waste_plus_person_13",
+  "type": "waste_plus_person",
+  "expected": "waste_survives",
+  "file": "waste_person_13.jpg",
+  "labels": [
+   "plastic",
+   "person"
+  ]
+ },
+ {
+  "id": "ood_object_14",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_cat_0_14.jpg",
+  "label": "cat"
+ },
+ {
+  "id": "ood_object_15",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_cat_1_15.jpg",
+  "label": "cat"
+ },
+ {
+  "id": "ood_object_16",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_dog_0_16.jpg",
+  "label": "dog"
+ },
+ {
+  "id": "ood_object_17",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_dog_1_17.jpg",
+  "label": "dog"
+ },
+ {
+  "id": "ood_object_18",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_automobile_0_18.jpg",
+  "label": "automobile"
+ },
+ {
+  "id": "ood_object_19",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_automobile_1_19.jpg",
+  "label": "automobile"
+ },
+ {
+  "id": "ood_object_20",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_truck_0_20.jpg",
+  "label": "truck"
+ },
+ {
+  "id": "ood_object_21",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_truck_1_21.jpg",
+  "label": "truck"
+ },
+ {
+  "id": "ood_object_22",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_doc_22.jpg",
+  "label": "document"
+ },
+ {
+  "id": "ood_object_23",
+  "type": "ood_object",
+  "expected": "reject_any",
+  "file": "ood_doc_23.jpg",
+  "label": "document"
+ },
+ {
+  "id": "quality_blur_24",
+  "type": "quality_blur",
+  "expected": "reject_quality",
+  "file": "blur_24.jpg"
+ },
+ {
+  "id": "quality_dark_25",
+  "type": "quality_dark",
+  "expected": "reject_quality",
+  "file": "dark_25.jpg"
+ },
+ {
+  "id": "quality_tiny_26",
+  "type": "quality_tiny",
+  "expected": "reject_quality",
+  "file": "tiny_26.jpg"
+ }
+]
