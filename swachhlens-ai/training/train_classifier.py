@@ -112,13 +112,15 @@ class PileMixDataset(Dataset):
 
     def __init__(self, records: list[dict], class_to_idx: dict[str, int], img_size: int,
                  pile_prob: float = 0.35, max_items: int = 4,
-                 min_paste_frac: float = 0.22, max_paste_frac: float = 0.55):
+                 min_paste_frac: float = 0.22, max_paste_frac: float = 0.55,
+                 balanced_prob: float = 0.15):
         self.records = records
         self.class_to_idx = class_to_idx
         self.img_size = img_size
         self.pile_prob = float(pile_prob)
         self.max_items = max(1, int(max_items))
         self.min_pf, self.max_pf = min_paste_frac, max_paste_frac
+        self.balanced_prob = float(balanced_prob)
         self.to_tensor = transforms.ToTensor()
         self.normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         self.jitter = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.15)
@@ -156,6 +158,28 @@ class PileMixDataset(Dataset):
         num_classes = len(self.class_to_idx)
         base_rec = self.records[i]
         canvas_area = float(self.img_size * self.img_size)
+
+        # Balanced split-mix: with probability `balanced_prob` build a two-way
+        # side-by-side composite (hard vertical seam, ~55/45 area) instead of a
+        # base-with-patches pile. Without this style the head never learns to
+        # co-fire on genuinely intermingled piles - it just reports the biggest
+        # region and zeroes the rest (observed in adversarial eval v2).
+        if (self.max_items > 1
+                and getattr(self, "balanced_prob", 0.0) > 0
+                and float(torch.rand(1)) < self.balanced_prob):
+            donor = self.records[int(torch.randint(0, len(self.records), (1,)).item())]
+            if donor["label"] != base_rec["label"]:
+                split = int(self.img_size * (0.5 + 0.12 * (torch.rand(1).item() - 0.5)))
+                left = self._rand_crop_scale(self._load(base_rec), self.img_size)
+                right = self._rand_crop_scale(self._load(donor), self.img_size)
+                canvas = Image.new("RGB", (self.img_size, self.img_size))
+                canvas.paste(left.crop((0, 0, split, self.img_size)), (0, 0))
+                canvas.paste(right.crop((split, 0, self.img_size, self.img_size)), (split, 0))
+                w = torch.zeros(num_classes)
+                w[self.class_to_idx[base_rec["label"]]] += split * self.img_size
+                w[self.class_to_idx[donor["label"]]] += (self.img_size - split) * self.img_size
+                canvas = self.jitter(canvas)
+                return self.normalize(self.to_tensor(canvas)), w / w.sum()
 
         n_items = 1
         if self.max_items > 1 and float(torch.rand(1)) < self.pile_prob:
@@ -388,7 +412,9 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
               pile_prob: float = 0.35, pile_max_items: int = 4,
               multilabel: bool = False,
               nonwaste_train: list | None = None,
-              nonwaste_val: list | None = None) -> dict:
+              nonwaste_val: list | None = None,
+              init_from: str | None = None,
+              balanced_prob: float = 0.0) -> dict:
     """Fine-tune Phase B.
 
     multilabel=False : legacy softmax + soft-target CE over `classes` (v1).
@@ -402,7 +428,8 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
     out_classes_ref = [classes + ([NON_WASTE_LABEL] if multilabel else [])]
     _, eval_tf = build_transforms(img_size)
     base_tr = PileMixDataset(by_split["train"], class_to_idx, img_size,
-                             pile_prob=pile_prob, max_items=pile_max_items)
+                             pile_prob=pile_prob, max_items=pile_max_items,
+                             balanced_prob=balanced_prob)
     base_va = ManifestDataset(by_split["val"], eval_tf, class_to_idx)
     if multilabel:
         tr_ds = torch.utils.data.ConcatDataset([
@@ -420,6 +447,13 @@ def fine_tune(arch: str, classes: list[str], class_to_idx: dict, by_split: dict,
     va = DataLoader(va_ds, batch_size=128, shuffle=False, num_workers=2, persistent_workers=True)
 
     seq, feat_dim = make_model(arch, n_out)
+    if init_from:
+        prior = torch.load(init_from, map_location="cpu", weights_only=False)
+        # checkpoint stores nn.Sequential(seq, head): backbone keys carry "0."
+        clean = {k[2:]: v for k, v in prior["state_dict"].items() if k.startswith("0.")}
+        seq.load_state_dict(clean)
+        print(f"warm-started backbone from {init_from} (prior loss={prior.get('loss')})",
+              flush=True)
     unfreeze_tail(seq, arch, tail_blocks)
     head = nn.Sequential(nn.Dropout(0.2), nn.Linear(feat_dim, n_out))
     model = nn.Sequential(seq, head).to(DEVICE)
@@ -547,6 +581,13 @@ def main() -> None:
     ap.add_argument("--multilabel", action="store_true",
                     help="BCE multi-label head with a trained non_waste class "
                          "(requires training/nonwaste_manifest.json)")
+    ap.add_argument("--init-from", default=None,
+                    help="warm-start backbone weights from an existing checkpoint")
+    ap.add_argument("--balanced-prob", type=float, default=0.0,
+                    help="probability a train sample becomes a balanced 50/50 "
+                         "split-mix composite (teaches genuine co-presence)")
+    ap.add_argument("--lr-head", type=float, default=3e-4)
+    ap.add_argument("--lr-tail", type=float, default=5e-5)
     args = ap.parse_args()
 
     seed_everything()
@@ -596,10 +637,12 @@ def main() -> None:
               f"({'BCE multilabel+non_waste' if args.multilabel else 'softmax CE'}) ===")
         ft = fine_tune(arch, classes, class_to_idx, by_split, class_w,
                        img_size=args.img_size, epochs=args.epochs_b,
-                       tail_blocks=args.tail_blocks,
+                       tail_blocks=args.tail_blocks, lr_head=args.lr_head,
+                       lr_tail=args.lr_tail,
                        pile_prob=args.pile_prob, pile_max_items=args.pile_max_items,
                        multilabel=args.multilabel,
-                       nonwaste_train=nw_train, nonwaste_val=nw_val)
+                       nonwaste_train=nw_train, nonwaste_val=nw_val,
+                       init_from=args.init_from, balanced_prob=args.balanced_prob)
         ckpt = {
             "arch": arch,
             "classes": out_classes,
