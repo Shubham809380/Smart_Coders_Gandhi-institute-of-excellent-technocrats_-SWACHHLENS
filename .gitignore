@@ -46,6 +46,8 @@ firebase-debug.log
 backend/data/state.json
 backend/uploads/
 *.log
+local_token.txt
+*.token
 
 # === OS / EDITOR ===
 .DS_Store
