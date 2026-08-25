@@ -69,7 +69,7 @@
    "id": "waste_single_07",
    "type": "waste_single",
    "expected": "accept_waste",
-   "outcome": "accept(glass) REVIEW PROVISIONAL",
+   "outcome": "accept(glass+textile) REVIEW PROVISIONAL",
    "pass": true,
    "review": true,
    "nonWaste": 0
@@ -96,7 +96,7 @@
    "id": "mixed_pile_10",
    "type": "mixed_pile",
    "expected": "mixed_detected",
-   "outcome": "accept(plastic) PROVISIONAL",
+   "outcome": "accept(paper) PROVISIONAL",
    "pass": false,
    "review": false,
    "nonWaste": 0
@@ -105,16 +105,16 @@
    "id": "mixed_pile_11",
    "type": "mixed_pile",
    "expected": "mixed_detected",
-   "outcome": "accept(metal) PROVISIONAL",
+   "outcome": "accept(organic) REVIEW PROVISIONAL",
    "pass": false,
-   "review": false,
-   "nonWaste": 0
+   "review": true,
+   "nonWaste": 0.001
   },
   {
    "id": "mixed_pile_12",
    "type": "mixed_pile",
    "expected": "mixed_detected",
-   "outcome": "accept(textile) REVIEW PROVISIONAL",
+   "outcome": "accept(cardboard+battery+plastic) REVIEW PROVISIONAL",
    "pass": false,
    "review": true,
    "nonWaste": 0
